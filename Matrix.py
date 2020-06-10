@@ -1,4 +1,3 @@
-from main import Point
 import numpy as np
 from collections.abc import Iterable
 import pprint as pp
@@ -59,7 +58,7 @@ class Matrix:
             transMat[i][len(direction)] = val
         beforeV = Matrix(asArr=[x[0] for x in self.mat] + [1])
         afterV = transMat.Mul(beforeV)
-        self.mat = afterV[:-1]
+        self.mat = Matrix.ColumnVector(afterV[:-1]).mat
 
     def Rotate(self, rotationVector):
         assert self.shape[0] == 3 and self.shape[1] == 1

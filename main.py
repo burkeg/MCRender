@@ -79,12 +79,25 @@ class Shape:
         for point in self.points:
             matrixOp(point, *args)
 
+    @staticmethod
+    def Star(r=0.5):
+        startShape = Shape(points=
+                         [Point(math.cos(2*math.pi*k/5 + math.pi/2),
+                                math.sin(2*math.pi*k/5 + math.pi/2),
+                                0) for k in range(5)] +
+                         [Point(r*math.cos(2*math.pi*k/5 + 7*math.pi/10),
+                                r*math.sin(2*math.pi*k/5 + 7*math.pi/10),
+                                0) for k in range(5)])
+        startShape.MatrixOpPoints(Matrix.Translate, [0, 0, 50])
+        return startShape
+
 class Screen:
     def __init__(self, height=400, width=600):
         self.height = height
         self.width = width
         self.camera = Camera()
-        self.camera.ConfigureOrthographic(-100, 100, -100, 100, 0, 100)
+        self.camera.ConfigureOrthographic(-1, 1, -1, 1, 20, 100)
+        self.camera.pos.x = 0
         self.xPosCalc = interp1d([-1, 1], [0, self.width - 1])
         self.yPosCalc = interp1d([1, -1], [0, self.height - 1])
         self.inRange = lambda x: -1 <= x <= 1
@@ -112,16 +125,22 @@ class Screen:
             rowStrs.append(''.join(lineChars + ['|']))
         print('\n'.join(rowStrs + [rowStrs[0]]))
 
+class Control:
+    def __init__(self):
+        pass
 
 
 def Test():
-    a = Point(0, 0, 10)
-    b = Point(50, 0, 10)
-    c = Point(50, 50, 10)
-    shape = Shape([a, b, c])
-    numPts = 11
+    a = Point(0, 1.0, 10)
+    b = Point(1.0, 0, 10)
+    c = Point(-1.0, 0, 10)
+    d = Point(0, -1.0, 10)
+    e = Point(0, 0, 10)
+    screen = Screen(height=20, width=80)
+    numPts = 1
     for i in range(numPts):
-        screen = Screen(height=20, width=80)
+        # shape = Shape([a, b, c, d, e])
+        shape = Shape.Star()
         screen.DrawPointsAsAscii(shape)
         shape.MatrixOpPoints(Matrix.Translate, [15, -10, 0])
         time.sleep(0.5)

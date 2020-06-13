@@ -60,6 +60,9 @@ class Matrix:
         afterV = transMat.Mul(beforeV)
         self.mat = Matrix.ColumnVector(afterV[:-1]).mat
 
+    def Translated(self, direction):
+        newPoint = type(self)()
+
     def Rotate(self, rotationVector):
         assert self.shape[0] == 3 and self.shape[1] == 1
         xTheta, yTheta, zTheta = map(np.radians, rotationVector)

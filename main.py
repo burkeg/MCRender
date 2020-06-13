@@ -96,8 +96,8 @@ class Screen:
         self.height = height
         self.width = width
         self.camera = Camera()
-        self.camera.ConfigureOrthographic(-1, 1, -1, 1, 20, 100)
-        self.camera.pos.x = 0
+        self.camera.ConfigureOrthographic(-1, 1, -1, 1, 1, 100)
+        self.camera.pos.x = 1
         self.xPosCalc = interp1d([-1, 1], [0, self.width - 1])
         self.yPosCalc = interp1d([1, -1], [0, self.height - 1])
         self.inRange = lambda x: -1 <= x <= 1
@@ -113,10 +113,10 @@ class Screen:
         return screenPoints
 
     def DrawPointsAsAscii(self, shape):
-        pixels = np.zeros(shape=(self.height, self.width))
+        pixels = np.zeros(shape=(self.height, self.width), dtype=np.float32)
         for p in self.ConvertToScreenPoints(shape):
             assert isinstance(p, Point)
-            pixels[p.y][p.x] = 1
+            pixels[int(p.y)][int(p.x)] = 1
         rowStrs = ['-' * (self.width + 2)]
         for row in pixels:
             lineChars = ['|']
@@ -131,19 +131,14 @@ class Control:
 
 
 def Test():
-    a = Point(0, 1.0, 10)
-    b = Point(1.0, 0, 10)
-    c = Point(-1.0, 0, 10)
-    d = Point(0, -1.0, 10)
-    e = Point(0, 0, 10)
     screen = Screen(height=20, width=80)
-    numPts = 1
-    for i in range(numPts):
-        # shape = Shape([a, b, c, d, e])
-        shape = Shape.Star()
+    shape = Shape.Star()
+    shape.MatrixOpPoints(Matrix.Scale, [0.4, 0.4, 0])
+    shape.MatrixOpPoints(Matrix.Translate, [0.5, 0, 0])
+    for i in range(360):
+        shape.MatrixOpPoints(Matrix.Rotate, [0, 0, 1])
         screen.DrawPointsAsAscii(shape)
-        shape.MatrixOpPoints(Matrix.Translate, [15, -10, 0])
-        time.sleep(0.5)
+        time.sleep(0.1)
 
 
 

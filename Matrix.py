@@ -15,7 +15,7 @@ class Matrix:
         if asArr is not None:
             assert isinstance(asArr, Iterable)
             if not isinstance(asArr, np.ndarray):
-                self.mat = np.array(asArr)
+                self.mat = np.array(asArr, dtype=np.float32)
                 self.shape = self.mat.shape
             else:
                 self.mat = asArr
@@ -78,10 +78,11 @@ class Matrix:
             [np.cos(zTheta), -np.sin(zTheta), 0],
             [np.sin(zTheta), np.cos(zTheta), 0],
             [0, 0, 1]])
-        self.mat = Rz.Mul(Ry).Mul(Rx).Mul(self)
+        Rxyz = Rz.Mul(Ry).Mul(Rx)
+        self.mat = Rxyz.Mul(self).mat
 
     def Scale(self, scaleVector):
-        self.mat = Matrix.Diagonal(scaleVector).Mul(self)
+        self.mat = Matrix.Diagonal(scaleVector).Mul(self).mat
 
 
 def Test():

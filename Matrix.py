@@ -48,9 +48,11 @@ class Matrix:
             mat[i][i] = vector[i]
         return mat
 
-    def Mul(self, other):
-        assert isinstance(other, Matrix)
-        return Matrix(asArr=np.matmul(self.mat, other.mat))
+    def Mul(self, other, manual=False):
+        if manual:
+            return self.MutliplyManual(self.mat, other.mat)
+        else:
+            return Matrix(asArr=np.matmul(self.mat, other.mat))
 
     def Translate(self, direction):
         transMat = Matrix.I(len(direction) + 1)
@@ -83,6 +85,41 @@ class Matrix:
 
     def Scale(self, scaleVector):
         self.mat = Matrix.Diagonal(scaleVector).Mul(self).mat
+
+    @staticmethod
+    def MutliplyManual(A, B):
+        assert isinstance(A, np.ndarray)
+        assert isinstance(B, np.ndarray)
+        if A.shape == (4, 4) and B.shape == (4, 4):
+            return Matrix.Multiply4x4_4x4(A, B)
+        if A.shape == (4, 4) and B.shape == (4, 1):
+            return Matrix.Multiply4x4_4x1(A, B)
+        if A.shape == (3, 3) and B.shape == (3, 3):
+            return Matrix.Multiply3x3_3x3(A, B)
+        if A.shape == (3, 3) and B.shape == (3, 1):
+            return Matrix.Multiply3x3_3x1(A, B)
+        raise Exception('Unsupported multiply')
+
+    @staticmethod
+    def Multiply4x4_4x4(A, B):
+        pass
+
+    @staticmethod
+    def Multiply4x4_4x1(A, B):
+        pass
+
+    @staticmethod
+    def Multiply3x3_3x3(A, B):
+        n, m = A.shape
+        m, p = B.shape
+        mulResults = np.zeros((A.shape[0], B.shape[1]))
+        for row in range(len(mulResults)):
+            for col in range(len(mulResults[row])):
+                mulResults = a[row]
+
+    @staticmethod
+    def Multiply3x3_3x1(A, B):
+        pass
 
 
 def Test():

@@ -20,12 +20,6 @@ class Point(Matrix):
             raise Exception('Too many dimensions.')
         self.dim = len(args)
         super().__init__(asArr=Matrix.ColumnVector(args).mat)
-        # if len(args) > 2:
-        #     self.z = args[2]
-        # if len(args) > 1:
-        #     self.y = args[1]
-        # if len(args) > 0:
-        #     self.x = args[0]
         super().__init__(asArr=Matrix.ColumnVector(self.AsTuple()).mat)
 
     def AsTuple(self):
@@ -88,11 +82,11 @@ class Shape:
                          [Point(r*math.cos(2*math.pi*k/5 + 7*math.pi/10),
                                 r*math.sin(2*math.pi*k/5 + 7*math.pi/10),
                                 0) for k in range(5)])
-        startShape.MatrixOpPoints(Matrix.Translate, [0, 0, 50])
         return startShape
 
     @staticmethod
     def Teapot():
+        # https://github.com/dasch/graphics/blob/master/data/teapot.data
         teapotShape = Shape(points=
                             [Point(1.40000, 0.00000, 2.40000),
                              Point(1.40000, -0.78400, 2.40000),
@@ -408,8 +402,10 @@ class Screen:
         self.height = height
         self.width = width
         self.camera = Camera()
-        self.camera.ConfigureOrthographic(-1, 1, -1, 1, 1, 100)
-        self.camera.pos.x = 1
+        # self.camera.ConfigureOrthographic(-1, 1, -1, 1, 1, 100)
+        self.camera.ConfigurePerspective(90, 1, 100)
+        # self.camera.pos.x = 1
+        self.camera.pos.x = 0
         self.xPosCalc = interp1d([-1, 1], [0, self.width - 1])
         self.yPosCalc = interp1d([1, -1], [0, self.height - 1])
         self.inRange = lambda x: -1 <= x <= 1
@@ -441,26 +437,30 @@ class Control:
     def __init__(self):
         pass
 
-def Test():
-    screen = Screen(height=35, width=120)
-    shape = Shape.Teapot()
-    shape.MatrixOpPoints(Matrix.Scale, [0.3, 0.3, 0.3])
-    shape.MatrixOpPoints(Matrix.Rotate, [-90, 0, 0])
-    shape.MatrixOpPoints(Matrix.Translate, [0, 0, 0])
-    for i in range(360//5):
-        shape.MatrixOpPoints(Matrix.Rotate, [5, 0, 0])
+def TestShape(shape, degPerTurn=15, scale=None, rotate=None, translate=None):
+    scale = scale if scale is not None else [1, 1, 1]
+    rotate = rotate if rotate is not None else [0, 0, 0]
+    translate = translate if translate is not None else [0, 0, 0]
+    screen = Screen(height=20, width=50)
+    shape.MatrixOpPoints(Matrix.Scale, scale)
+    shape.MatrixOpPoints(Matrix.Rotate, rotate)
+    shape.MatrixOpPoints(Matrix.Translate, translate)
+
+    for i in range(360//degPerTurn):
+        shape.MatrixOpPoints(Matrix.Rotate, [degPerTurn, 0, 0])
         screen.DrawPointsAsAscii(shape)
         time.sleep(0.1)
-    for i in range(360//5):
-        shape.MatrixOpPoints(Matrix.Rotate, [0, 5, 0])
+    for i in range(360//degPerTurn):
+        shape.MatrixOpPoints(Matrix.Rotate, [0, degPerTurn, 0])
         screen.DrawPointsAsAscii(shape)
         time.sleep(0.1)
-    for i in range(360//5):
-        shape.MatrixOpPoints(Matrix.Rotate, [0, 0, 5])
+    for i in range(360//degPerTurn):
+        shape.MatrixOpPoints(Matrix.Rotate, [0, 0, degPerTurn])
         screen.DrawPointsAsAscii(shape)
         time.sleep(0.1)
 
 
 
 if __name__ == '__main__':
-    Test()
+    TestShape(Shape.Teapot(), scale=[0.3, 0.3, 0.3], rotate=[-90, 0, 0])
+    TestShape(Shape.Star())

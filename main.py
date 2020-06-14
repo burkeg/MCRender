@@ -20,7 +20,6 @@ class Point(Matrix):
             raise Exception('Too many dimensions.')
         self.dim = len(args)
         super().__init__(asArr=Matrix.ColumnVector(args).mat)
-        super().__init__(asArr=Matrix.ColumnVector(self.AsTuple()).mat)
 
     def AsTuple(self):
         return tuple([x[0] for x in self.mat])

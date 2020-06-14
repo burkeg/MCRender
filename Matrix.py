@@ -1,4 +1,5 @@
 import numpy as np
+from MyFloat import *
 from collections.abc import Iterable
 import pprint as pp
 
@@ -48,19 +49,22 @@ class Matrix:
             mat[i][i] = vector[i]
         return mat
 
-    def Mul(self, other, manual=False):
+    def Mul(self, other, manual=True):
+        man = self.MutliplyManual(self.mat, other.mat)
+        usingNp = Matrix(asArr=np.matmul(self.mat, other.mat))
+        assert (man.mat == usingNp.mat).all()
         if manual:
-            return self.MutliplyManual(self.mat, other.mat)
+            return man
         else:
-            return Matrix(asArr=np.matmul(self.mat, other.mat))
+            return usingNp
 
     def Translate(self, direction):
         transMat = Matrix.I(len(direction) + 1)
         for i, val in enumerate(direction):
             transMat[i][len(direction)] = val
-        beforeV = Matrix(asArr=[x[0] for x in self.mat] + [1])
+        beforeV = Matrix(asArr=[[x[0]] for x in self.mat] + [[1]])
         afterV = transMat.Mul(beforeV)
-        self.mat = Matrix.ColumnVector(afterV[:-1]).mat
+        self.mat = afterV.mat[:-1]
 
     def Translated(self, direction):
         newPoint = type(self)()
@@ -88,40 +92,24 @@ class Matrix:
 
     @staticmethod
     def MutliplyManual(A, B):
+        # Naive implementation
+        # https://en.wikipedia.org/wiki/Matrix_multiplication_algorithm
         assert isinstance(A, np.ndarray)
         assert isinstance(B, np.ndarray)
-        if A.shape == (4, 4) and B.shape == (4, 4):
-            return Matrix.Multiply4x4_4x4(A, B)
-        if A.shape == (4, 4) and B.shape == (4, 1):
-            return Matrix.Multiply4x4_4x1(A, B)
-        if A.shape == (3, 3) and B.shape == (3, 3):
-            return Matrix.Multiply3x3_3x3(A, B)
-        if A.shape == (3, 3) and B.shape == (3, 1):
-            return Matrix.Multiply3x3_3x1(A, B)
-        raise Exception('Unsupported multiply')
+        n, mA = A.shape
+        mB, p = B.shape
+        assert mA == mB
+        m = mA
+        C = np.zeros(shape=(n, p))
+        for i in range(n):
+            for j in range(p):
+                cSum = 0
+                for k in range(m):
+                    cSum = cSum + A[i][k] * B[k][j]
+                C[i][j] = cSum
+        return Matrix(asArr=C)
 
-    @staticmethod
-    def Multiply4x4_4x4(A, B):
-        pass
-
-    @staticmethod
-    def Multiply4x4_4x1(A, B):
-        pass
-
-    @staticmethod
-    def Multiply3x3_3x3(A, B):
-        n, m = A.shape
-        m, p = B.shape
-        mulResults = np.zeros((A.shape[0], B.shape[1]))
-        for row in range(len(mulResults)):
-            for col in range(len(mulResults[row])):
-                mulResults = a[row]
-
-    @staticmethod
-    def Multiply3x3_3x1(A, B):
-        pass
-
-
+    
 def Test():
     np.set_printoptions(precision=3)
     print('identity\n', Matrix.I(4))

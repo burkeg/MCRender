@@ -1,12 +1,32 @@
 import numpy as np
 import math
 import struct
+from enum import Enum
 # http://weitz.de/ieee/
+# https://ieeexplore.ieee.org/abstract/document/4380621/authors#authors
+
+class FloatFlag(Enum):
+    OK = 0
+    INVALID = 1 << 0
+    DIV0 = 1 << 1
+    OVERFLOW = 1 << 2
+    UNDERFLOW = 1 << 3
+    INEXACT = 1 << 4
+
 class MyFloat:
+    status = FloatFlag.OK
+
     def __init__(self, value=None, valueFormat=None):
-        self.format = type(value)
-        self.original = value
-        if value is None:
+        self.format = None
+        self.original = 0.0
+        if value is not None:
+            if valueFormat is not None:
+                self.format = valueFormat
+                self.original = valueFormat(value)
+            else:
+                self.format = type(value)
+                self.original = value
+        else:
             assert valueFormat is not None
             self.format = valueFormat
             self.original = valueFormat(0.0)
@@ -26,7 +46,6 @@ class MyFloat:
 
     def __str__(self):
         return str(self.original) + ': ' + '{' + ','.join([self.S, self.E, self.T]) + '}'
-
     def __unicode__(self):
         return str(self)
     def __repr__(self):
@@ -39,6 +58,14 @@ class MyFloat:
         return MyFloat.Multiply(self, other)
     def __rmul__(self, other):
         return MyFloat.Multiply(self, other)
+
+    @staticmethod
+    def SetFlag(flag):
+        MyFloat.status |= flag
+
+    @staticmethod
+    def ClearFlag(flag):
+        MyFloat.status &= ~flag
 
     def Reinterpret(self):
         self.original = self.bin2float(self.S + self.E + self. T)
@@ -120,6 +147,9 @@ class MyFloat:
         assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
         if not manual:
             return MyFloat(a.original + b.original)
+        infty = False
+        inexact = False
+
         c = MyFloat(valueFormat=a.format)
         AS, AE, AT = [int(_, 2) for _ in [a.S, a.E, a.T]]
         BS, BE, BT = [int(_, 2) for _ in [b.S, b.E, b.T]]
@@ -130,35 +160,32 @@ class MyFloat:
             AS, AE, AT = BS, BE, BT
             BS, BE, BT = tmpS, tmpE, tmpT
 
+        # Shift the exponent of the smaller number to match that of the large number
         shiftAmt = AE - BE
         CE = AE
-        BT >>= shiftAmt
+
+        # Add implicit leading 1 to significand
+        # TODO the implicit 1 doesn't exist in denormal numbers
+        AT += (1 << a.SignificandBits)
+        BT += (1 << b.SignificandBits)
+        # TODO
+        # detect loss of info in B here
+        BT = (BT >> shiftAmt)
 
         if AS == BS:
-            Acombined = (AE << a.SignificandBits) + AT
-            Bcombined = (BE << b.SignificandBits) + BT
-            Ccombined = Acombined + Bcombined
-            CT = Ccombined % 1 << a.SignificandBits
-            CE = Ccombined >> a.SignificandBits
-            # CT = AT + BT
-            # if CT >= 1 << c.SignificandBits:
-            #     CE += 1
-            #     # Losing some precision due to rounding here
-            #     CT %= 1 << c.SignificandBits
-
-            if CE >= (1 << a.ExponentBits):
-                # Signs matched, set INF
-                CS = AS
-                CE = (1 << a.ExponentBits) - 1
-                CT = 1 << (a.ExponentBits - 1)
-
+            CT = AT + BT
             CS = AS
         else:
+            CT = abs(AT - BT)
+            CS = AS if abs(AT) > abs(BT) else BS
             # Make sure to set sign bit correctly
             pass
 
-        # Make sure to normalize.
-        # TODO
+        CE, CT, infty, inexact = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits)
+
+        if infty:
+            CE = (1 << c.ExponentBits) - 1
+            CT = 1 << (c.ExponentBits - 1)
 
         c.S = format(CS, '01b')
         c.E = format(CE, '0' + str(a.ExponentBits) + 'b')
@@ -170,6 +197,25 @@ class MyFloat:
         c.Reinterpret()
         return c
 
+    @staticmethod
+    def Normalize(exponent, significand, exponentBits, significandBits):
+        bitsShifted = 0
+        infty = False
+        infoLost = False
+        while significand >= (1 << (significandBits + 1)):
+            bitsShifted += 1
+            if significand % 1:
+                infoLost = True
+            exponent += 1
+            significand >>= 1
+
+        significand %= 1 << significandBits
+
+        if exponent >= (1 << exponentBits):
+            infty = True
+
+        return exponent, significand, infty, infoLost
+
 
     @staticmethod
     def Multiply(a, b, manual=False):
@@ -179,11 +225,31 @@ class MyFloat:
         else:
             raise NotImplementedError()
 
+
 def TestAdd():
-    mf1 = MyFloat(np.float16(3))
-    mf2 = MyFloat(np.float16(7))
-    mfSum = MyFloat.Add(mf1, mf2, True)
-    print(mfSum)
+    testCases = [
+        [1.0, 1.0],
+        [0.0, 0.0],
+        [0.0, -0.0],
+        [-0.0, 0.0],
+        [-0.0, -0.0],
+        [1.0/3.0, 2.0/3.0],
+        [-27, np.infty],
+        [np.infty, np.infty],
+        [np.infty, -np.infty],
+        [-np.infty, -np.infty],
+        [-np.infty, np.infty],
+        [np.NaN, 0]
+    ]
+    for a, b in testCases:
+        A = MyFloat(a, np.float16)
+        B = MyFloat(b, np.float16)
+        C = MyFloat.Add(A, B, True)
+        print(A, '+', B)
+        mine = C.original
+        actual = np.float16(a) + np.float16(b)
+        print('Mine: ', mine, ' Actual: ', actual)
+        assert mine == actual
 
 def Test():
     print(MyFloat(np.float16(np.inf)))

@@ -68,8 +68,11 @@ class MyFloat:
         MyFloat.status &= ~flag
 
     def Reinterpret(self):
-        self.original = self.bin2float(self.S + self.E + self. T)
+        self.original = self.bin2float(self.S + self.E + self.T)
         pass
+
+    def AsBinary(self):
+        return self.float2bin(self.original)
 
     # https://stackoverflow.com/a/59594903
     def bin2float(self, b):
@@ -103,6 +106,12 @@ class MyFloat:
         elif self.format == np.float64:
             [d] = struct.unpack(">Q", struct.pack(">d", f))
             return f'{d:064b}'
+
+    def EqualsFloat(self, actualFloat):
+        assert type(actualFloat) == self.format
+        mine = self.S + self.E + self.T
+        target = self.float2bin(actualFloat)
+        return mine == target
 
     def PopulateData(self):
         if self.format == np.float16:
@@ -147,45 +156,69 @@ class MyFloat:
         assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
         if not manual:
             return MyFloat(a.original + b.original)
-        infty = False
         inexact = False
+        lostBits = ''
+        pInf = (0, (1 << a.ExponentBits) - 1, 0)
+        nInf = (1, (1 << a.ExponentBits) - 1, 0)
+        NaN = (1, (1 << a.ExponentBits) - 1, 1 << (a.SignificandBits - 1))
 
         c = MyFloat(valueFormat=a.format)
         AS, AE, AT = [int(_, 2) for _ in [a.S, a.E, a.T]]
         BS, BE, BT = [int(_, 2) for _ in [b.S, b.E, b.T]]
         CS, CE, CT = [int(_, 2) for _ in [c.S, c.E, c.T]]
-        # Make sure A has the largest exponent
-        if AE < BE:
+        # Make sure A has the larger magnitude
+        if AE < BE or (AE == BE and AT < BT):
             tmpS, tmpE, tmpT = AS, AE, AT
             AS, AE, AT = BS, BE, BT
             BS, BE, BT = tmpS, tmpE, tmpT
-
-        # Shift the exponent of the smaller number to match that of the large number
-        shiftAmt = AE - BE
-        CE = AE
-
-        # Add implicit leading 1 to significand
-        # TODO the implicit 1 doesn't exist in denormal numbers
-        AT += (1 << a.SignificandBits)
-        BT += (1 << b.SignificandBits)
-        # TODO
-        # detect loss of info in B here
-        BT = (BT >> shiftAmt)
-
-        if AS == BS:
-            CT = AT + BT
-            CS = AS
+        # Detect special cases
+        aInf = MyFloat.IsInfinite(AE, AT, a.ExponentBits)
+        bInf = MyFloat.IsInfinite(BE, BT, b.ExponentBits)
+        aNaN = MyFloat.IsNaN(AE, AT, a.ExponentBits)
+        bNaN = MyFloat.IsNaN(BE, BT, b.ExponentBits)
+        # Cannot add +inf to -inf
+        if aInf and bInf:
+            if AS != BS:
+                CS, CE, CT = NaN
+            else:
+                CS, CE, CT = pInf if AS == 0 else nInf
+        elif aInf ^ bInf:
+            CS, CE, CT = pInf
+            CS = AS if aInf else BS
+        elif aNaN or bNaN:
+            CS, CE, CT = (AS, AE, AT) if aNaN else (BS, BE, BT)
         else:
-            CT = abs(AT - BT)
-            CS = AS if abs(AT) > abs(BT) else BS
-            # Make sure to set sign bit correctly
-            pass
+            # Normal operation
+            # Set the exponent
+            CE = AE
 
-        CE, CT, infty, inexact = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits)
+            # If a >> b, all trailing bits from b are lost so replace them with a's trailing bits
+            # TODO check this math
+            if AE - BE >= a.SignificandBits:
+                CT = AT
+                CS = AS
+            else:
+                # Add in implicit leading digit
+                leadingDigitA = 0 if AE == 0 else 1
+                leadingDigitB = 0 if BE == 0 else 1
+                AT |= leadingDigitA << a.SignificandBits
+                BT |= leadingDigitB << b.SignificandBits
 
-        if infty:
-            CE = (1 << c.ExponentBits) - 1
-            CT = 1 << (c.ExponentBits - 1)
+                # Scale right
+                shiftAmt = AE - BE
+                lostBits = bin(BT % (1 << shiftAmt))[2:]
+                BT >>= shiftAmt
+
+                # Add
+                if AS != BS:
+                    CS = AS if AE > BE or (AE == BE and AT > BT) else BS
+                    CT = abs(AT - BT)
+                else:
+                    CT = AT + BT
+                    CS = AS
+
+            # Normalize
+            CE, CT, _, lostBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, lostBits)
 
         c.S = format(CS, '01b')
         c.E = format(CE, '0' + str(a.ExponentBits) + 'b')
@@ -198,23 +231,67 @@ class MyFloat:
         return c
 
     @staticmethod
-    def Normalize(exponent, significand, exponentBits, significandBits):
-        bitsShifted = 0
+    def IsInfinite(exponent, significand, exponentbits):
+        return exponent == (1 << exponentbits) - 1 and significand == 0
+
+    @staticmethod
+    def IsNaN(exponent, significand, exponentbits):
+        return exponent == (1 << exponentbits) - 1 and significand != 0
+
+    @staticmethod
+    def Normalize(exponent, significand, exponentBits, significandBits, lostBits):
         infty = False
         infoLost = False
-        while significand >= (1 << (significandBits + 1)):
-            bitsShifted += 1
-            if significand % 1:
-                infoLost = True
-            exponent += 1
-            significand >>= 1
+        if significand >= 1 << (significandBits + 1):
+            # Significand >= 2
+            # Rightshift significand and add to exponent until infinity
+            # or 1 <= significand < 2
+            rShifted = 0
+            while significand >= 1 << (significandBits + 1):
+                bitToLose = (significand % 2) << rShifted
+                lostBits = str(bitToLose) + lostBits
+                if bitToLose == 1:
+                    infoLost = True
+                significand >>= 1
+                exponent += 1
+                # Check for infinity
+                if exponent == (1 << exponentBits) - 1:
+                    significand = 0
+                    break
+            else:
+                # Clear out the implicit leading 1 in the significand
+                significand &= (1 << significandBits) - 1
+            if infoLost:
+                print('lost bits: ', lostBits)
 
-        significand %= 1 << significandBits
+        elif exponent > 0:
+            # 0 <= significand < 2
+            # Leftshift significand and subtract from exponent until subnormal
+            # or 1 <= significand < 2
+            while significand <= 1 << significandBits:
+                significand <<= 1
+                exponent -= 1
+                # Check for subnormal
+                if exponent == 0:
+                    break
+            else:
+                # Clear out the implicit leading 1 in the significand
+                significand &= (1 << significandBits) - 1
+            pass
+        elif exponent == 0 and significand >= 1 << significandBits:
+            # subnormal getting upgraded
+            exponent = 1
+            significand &= (1 << significandBits) - 1
+            # while significand >= 1 << significandBits:
+        elif exponent == 0:
+            # once a denormal always a denormal!
+            pass
 
-        if exponent >= (1 << exponentBits):
-            infty = True
 
-        return exponent, significand, infty, infoLost
+        else:
+            raise Exception('Unexpected case')
+
+        return exponent, significand, infoLost, lostBits
 
 
     @staticmethod
@@ -228,28 +305,46 @@ class MyFloat:
 
 def TestAdd():
     testCases = [
+        [1, -2],
+        [1.001, 1.0],
         [1.0, 1.0],
         [0.0, 0.0],
         [0.0, -0.0],
         [-0.0, 0.0],
         [-0.0, -0.0],
+        [np.infty - np.infty, np.nan],
+        [np.nan, np.infty - np.infty],
         [1.0/3.0, 2.0/3.0],
+        [3, 7],
+        [30, 70],
+        [300, 700],
+        [3000, 7000],
+        [3, 7000],
         [-27, np.infty],
         [np.infty, np.infty],
         [np.infty, -np.infty],
         [-np.infty, -np.infty],
         [-np.infty, np.infty],
-        [np.NaN, 0]
+        [np.NaN, 0],
+        [3.052E-5, 3.052E-5], #subnormal + subnormal = normal
+        [6.104E-5, -3.052E-5], #normal + subnormal = subnormal
+        [6.104E-5, -6.11E-5], #normal + normal = subnormal
+
     ]
     for a, b in testCases:
         A = MyFloat(a, np.float16)
         B = MyFloat(b, np.float16)
         C = MyFloat.Add(A, B, True)
-        print(A, '+', B)
         mine = C.original
-        actual = np.float16(a) + np.float16(b)
-        print('Mine: ', mine, ' Actual: ', actual)
-        assert mine == actual
+        actual = A.original + B.original
+        if C.EqualsFloat(actual):
+            print('----------------')
+            print(A, '+', B)
+            print('Matches: ', MyFloat(actual))
+        else:
+            print('----------------')
+            print(A, '+', B)
+            print('FAILED: ', C, ' Actual: ', MyFloat(actual))
 
 def Test():
     print(MyFloat(np.float16(np.inf)))

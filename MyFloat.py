@@ -211,7 +211,7 @@ class MyFloat:
 
                 # Add
                 if AS != BS:
-                    CS = AS if AE > BE or (AE == BE and AT > BT) else BS
+                    CS = AS if AT > BT else BS
                     CT = abs(AT - BT)
                 else:
                     CT = AT + BT
@@ -268,7 +268,7 @@ class MyFloat:
             # 0 <= significand < 2
             # Leftshift significand and subtract from exponent until subnormal
             # or 1 <= significand < 2
-            while significand <= 1 << significandBits:
+            while significand < 1 << significandBits:
                 significand <<= 1
                 exponent -= 1
                 # Check for subnormal

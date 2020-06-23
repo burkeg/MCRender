@@ -431,12 +431,14 @@ class Screen:
                 lineChars.append('#' if pixel == 1 else ' ')
             rowStrs.append(''.join(lineChars + ['|']))
         print('\n'.join(rowStrs + [rowStrs[0]]))
+        if MyFloat.logFailures:
+            pp.pprint(MyFloat.failureDict)
 
 class Control:
     def __init__(self):
         pass
 
-def TestShape(shape, degPerTurn=15, scale=None, rotate=None, translate=None):
+def TestShape(shape, degPerTurn=30, scale=None, rotate=None, translate=None):
     scale = scale if scale is not None else [1, 1, 1]
     rotate = rotate if rotate is not None else [0, 0, 0]
     translate = translate if translate is not None else [0, 0, 0]
@@ -462,4 +464,3 @@ def TestShape(shape, degPerTurn=15, scale=None, rotate=None, translate=None):
 
 if __name__ == '__main__':
     TestShape(Shape.Teapot(), scale=[0.3, 0.3, 0.3], rotate=[-90, 0, 0])
-    TestShape(Shape.Star())

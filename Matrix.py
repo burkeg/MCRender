@@ -52,7 +52,7 @@ class Matrix:
     def Mul(self, other, manual=True):
         man = self.MutliplyManual(self.mat, other.mat)
         usingNp = Matrix(asArr=np.matmul(self.mat, other.mat))
-        assert (man.mat == usingNp.mat).all()
+        # assert (man.mat == usingNp.mat).all()
         if manual:
             return man
         else:
@@ -103,9 +103,9 @@ class Matrix:
         C = np.zeros(shape=(n, p))
         for i in range(n):
             for j in range(p):
-                cSum = 0
+                cSum = 0.0
                 for k in range(m):
-                    cSum = cSum + A[i][k] * B[k][j]
+                    cSum = (MyFloat(cSum, np.float32) + MyFloat(A[i][k] * B[k][j], np.float32)).original
                 C[i][j] = cSum
         return Matrix(asArr=C)
 

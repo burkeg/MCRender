@@ -15,7 +15,8 @@ class FloatFlag(Enum):
 
 class MyFloat:
     status = FloatFlag.OK
-
+    logFailures = True
+    failureDict = dict()
     def __init__(self, value=None, valueFormat=None):
         self.format = None
         self.original = 0.0
@@ -152,7 +153,7 @@ class MyFloat:
             raise Exception('Unacceptable format')
 
     @staticmethod
-    def Add(a, b, manual=False):
+    def Add(a, b, manual=True):
         assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
         if not manual:
             return MyFloat(a.original + b.original)
@@ -161,6 +162,8 @@ class MyFloat:
         pInf = (0, (1 << a.ExponentBits) - 1, 0)
         nInf = (1, (1 << a.ExponentBits) - 1, 0)
         NaN = (1, (1 << a.ExponentBits) - 1, 1 << (a.SignificandBits - 1))
+        pZero = (0, 0, 0)
+        nZero = (1, 0, 0)
 
         c = MyFloat(valueFormat=a.format)
         AS, AE, AT = [int(_, 2) for _ in [a.S, a.E, a.T]]
@@ -171,54 +174,76 @@ class MyFloat:
             tmpS, tmpE, tmpT = AS, AE, AT
             AS, AE, AT = BS, BE, BT
             BS, BE, BT = tmpS, tmpE, tmpT
-        # Detect special cases
+
         aInf = MyFloat.IsInfinite(AE, AT, a.ExponentBits)
         bInf = MyFloat.IsInfinite(BE, BT, b.ExponentBits)
         aNaN = MyFloat.IsNaN(AE, AT, a.ExponentBits)
         bNaN = MyFloat.IsNaN(BE, BT, b.ExponentBits)
+        aZero = MyFloat.IsZero(AE, AT)
+        bZero = MyFloat.IsZero(BE, BT)
+
+        # Detect special cases
+        # NaN
+        if aNaN or bNaN:
+            CS, CE, CT = (AS, AE, AT) if aNaN else (BS, BE, BT)
         # Cannot add +inf to -inf
-        if aInf and bInf:
+        elif aInf and bInf:
             if AS != BS:
                 CS, CE, CT = NaN
             else:
                 CS, CE, CT = pInf if AS == 0 else nInf
+        # Adding infinite to finite
         elif aInf ^ bInf:
             CS, CE, CT = pInf
             CS = AS if aInf else BS
-        elif aNaN or bNaN:
-            CS, CE, CT = (AS, AE, AT) if aNaN else (BS, BE, BT)
+        # +-Zero plus +-Zero
+        elif aZero and bZero:
+            if AS == 1 and BS == 1:
+                CS, CE, CT = nZero
+            else:
+                CS, CE, CT = pZero
+        # x + -x = +0 always
+        elif AS != BS and AE == BE and AT == BT:
+            CS, CE, CT = pZero
+        # x + +-0 = x for x different from 0
+        elif aZero or bZero:
+            CS, CE, CT = (AS, AE, AT) if bZero else (BS, BE, BT)
+        # If a is much larger than b, all trailing bits from b are lost so replace them with a's trailing bits
+        # TODO check this math and make sure it's not off by a bit or two
+        elif AE - BE >= a.SignificandBits + 2:
+            CS = AS
+            CE = AE
+            CT = AT
         else:
             # Normal operation
             # Set the exponent
             CE = AE
 
-            # If a >> b, all trailing bits from b are lost so replace them with a's trailing bits
-            # TODO check this math
-            if AE - BE >= a.SignificandBits:
-                CT = AT
-                CS = AS
+
+            # Add in implicit leading digit
+            leadingDigitA = 0 if AE == 0 else 1
+            leadingDigitB = 0 if BE == 0 else 1
+            AT |= leadingDigitA << a.SignificandBits
+            BT |= leadingDigitB << b.SignificandBits
+
+            # Scale right
+            # when shifting into subnormals, the significand weighting is the same for exponent 0 and 1
+            shiftAmt = max(AE - max(BE, 1), 0)
+            roundingBits = Rounding()
+            BT = roundingBits.RShift(BT, shiftAmt)
+            BE -= shiftAmt
+            # Add
+            if AS != BS:
+                CS = AS if AT > BT else BS
+                CT = abs(AT - BT)
             else:
-                # Add in implicit leading digit
-                leadingDigitA = 0 if AE == 0 else 1
-                leadingDigitB = 0 if BE == 0 else 1
-                AT |= leadingDigitA << a.SignificandBits
-                BT |= leadingDigitB << b.SignificandBits
-
-                # Scale right
-                shiftAmt = AE - BE
-                lostBits = bin(BT % (1 << shiftAmt))[2:]
-                BT >>= shiftAmt
-
-                # Add
-                if AS != BS:
-                    CS = AS if AT > BT else BS
-                    CT = abs(AT - BT)
-                else:
-                    CT = AT + BT
-                    CS = AS
+                CT = AT + BT
+                CS = AS
 
             # Normalize
-            CE, CT, _, lostBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, lostBits)
+            CE, CT, _, roundingBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
+
+            CE, CT = MyFloat.Round(CS, CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
 
         c.S = format(CS, '01b')
         c.E = format(CE, '0' + str(a.ExponentBits) + 'b')
@@ -228,7 +253,31 @@ class MyFloat:
         assert len(c.E) == a.ExponentBits
         assert len(c.T) == a.SignificandBits
         c.Reinterpret()
+        if MyFloat.logFailures and MyFloat(a.original + b.original).original != c.original:
+            MyFloat.failureDict[(a.original, b.original)] = (MyFloat(a.original + b.original).original, c.original)
         return c
+
+    @staticmethod
+    def rShiftSignificand(significand, shiftAmt, prevRoundingBits):
+        prevGuardBit, prevRoundBit, prevStickyBit = prevRoundingBits
+        guardBit, roundBit, stickyBit = prevRoundingBits
+        lostBits = format(significand % (1 << shiftAmt), '0' + str(shiftAmt) + 'b')
+        if shiftAmt == 0:
+            pass
+        elif shiftAmt == 1:
+            guardBit = lostBits[0] == '1'
+            roundBit = prevGuardBit
+            stickyBit = prevRoundBit or prevStickyBit
+        elif shiftAmt == 2:
+            guardBit = lostBits[0] == '1'
+            roundBit = lostBits[1] == '1'
+            stickyBit = prevGuardBit or prevRoundBit or prevStickyBit
+        else:
+            guardBit = lostBits[0] == '1'
+            roundBit = lostBits[1] == '1'
+            stickyBit = ('1' in lostBits[2:]) or prevGuardBit or prevRoundBit or prevStickyBit
+
+        return (guardBit, roundBit, stickyBit)
 
     @staticmethod
     def IsInfinite(exponent, significand, exponentbits):
@@ -239,7 +288,11 @@ class MyFloat:
         return exponent == (1 << exponentbits) - 1 and significand != 0
 
     @staticmethod
-    def Normalize(exponent, significand, exponentBits, significandBits, lostBits):
+    def IsZero(exponent, significand):
+        return exponent == 0 and significand == 0
+
+    @staticmethod
+    def Normalize(exponent, significand, exponentBits, significandBits, roundingBits):
         infty = False
         infoLost = False
         if significand >= 1 << (significandBits + 1):
@@ -248,11 +301,7 @@ class MyFloat:
             # or 1 <= significand < 2
             rShifted = 0
             while significand >= 1 << (significandBits + 1):
-                bitToLose = (significand % 2) << rShifted
-                lostBits = str(bitToLose) + lostBits
-                if bitToLose == 1:
-                    infoLost = True
-                significand >>= 1
+                significand = roundingBits.RShift(significand, 1)
                 exponent += 1
                 # Check for infinity
                 if exponent == (1 << exponentBits) - 1:
@@ -262,21 +311,23 @@ class MyFloat:
                 # Clear out the implicit leading 1 in the significand
                 significand &= (1 << significandBits) - 1
             if infoLost:
-                print('lost bits: ', lostBits)
+                pass
+                # print('lost bits: ', lostBits)
 
         elif exponent > 0:
             # 0 <= significand < 2
             # Leftshift significand and subtract from exponent until subnormal
             # or 1 <= significand < 2
             while significand < 1 << significandBits:
-                significand <<= 1
+                if exponent != 1:
+                    # check if it's okay to LShift
+                    significand = roundingBits.LShift(significand, 1)
                 exponent -= 1
                 # Check for subnormal
                 if exponent == 0:
                     break
-            else:
-                # Clear out the implicit leading 1 in the significand
-                significand &= (1 << significandBits) - 1
+            # Clear out the implicit leading 1 in the significand
+            significand &= (1 << significandBits) - 1
             pass
         elif exponent == 0 and significand >= 1 << significandBits:
             # subnormal getting upgraded
@@ -291,8 +342,36 @@ class MyFloat:
         else:
             raise Exception('Unexpected case')
 
-        return exponent, significand, infoLost, lostBits
+        return exponent, significand, infoLost, roundingBits
 
+    # https://stackoverflow.com/questions/19146131/rounding-floating-point-numbers-after-addition-guard-sticky-and-round-bits#:~:text=The%20Guard%20bit%20is%20the,no%20other%20bit%20is%20present.
+    # http://pages.cs.wisc.edu/~david/courses/cs552/S12/handouts/guardbits.pdf
+    # round to nearest, ties to even
+    @staticmethod
+    def Round(sign, exponent, significand, exponentBits, significandBits, roundingBits):
+        # slicing operator returns an empty list if range isn't applicable to lostBits
+        assert isinstance(roundingBits, Rounding)
+        guardBit, roundBit, stickyBit = (roundingBits.guard, roundingBits.round, roundingBits.sticky)
+
+        # round down
+        # ...0xx
+        if not guardBit:
+            pass
+        # round up
+        # ...1xx where at least one x is one
+        elif guardBit and (roundBit or stickyBit):
+            significand += 1
+        # round even
+        # ...100
+        elif guardBit and not roundBit and not stickyBit:
+            if significand % 2 == 1:
+                significand += 1
+
+        # check for rounding overflow
+        if significand == (1 << significandBits):
+            exponent += 1
+            significand = 0
+        return exponent, significand
 
     @staticmethod
     def Multiply(a, b, manual=False):
@@ -302,9 +381,47 @@ class MyFloat:
         else:
             raise NotImplementedError()
 
+class Rounding:
+    def __init__(self):
+        self.lostBits = ''
+
+    @property
+    def guard(self):
+        return '1' in self.lostBits[0:1]
+
+    @property
+    def round(self):
+        return '1' in self.lostBits[1:2]
+
+    @property
+    def sticky(self):
+        return '1' in self.lostBits[2:]
+
+    def RShift(self, val, shiftAmt):
+        self.lostBits = format(val % (1 << shiftAmt), '0' + str(shiftAmt) + 'b') + self.lostBits
+        return val >> shiftAmt
+
+    def LShift(self, val, shiftAmt):
+        if len(self.lostBits) >= shiftAmt:
+            retval = (val << shiftAmt) | (int(self.lostBits, 2) >> (len(self.lostBits) - shiftAmt))
+            self.lostBits = self.lostBits[shiftAmt:]
+        elif self.lostBits == '':
+            retval = val << shiftAmt
+        else:
+            retval = (val << shiftAmt) | (int(self.lostBits, 2) << (shiftAmt - len(self.lostBits)))
+            self.lostBits = ''
+        return retval
+
 
 def TestAdd():
+    currType = np.float16
     testCases = [
+        [2050, 3],
+        [0.5874, -0.1327],
+        [0.7217, 1.865E-3],
+        [1.0/3.0, 2.0/3.0],
+        [2048, 3],
+        [1, 0],
         [1, -2],
         [1.001, 1.0],
         [1.0, 1.0],
@@ -314,12 +431,13 @@ def TestAdd():
         [-0.0, -0.0],
         [np.infty - np.infty, np.nan],
         [np.nan, np.infty - np.infty],
-        [1.0/3.0, 2.0/3.0],
         [3, 7],
         [30, 70],
         [300, 700],
         [3000, 7000],
         [3, 7000],
+        [1, 2047],
+        [2, 2047],
         [-27, np.infty],
         [np.infty, np.infty],
         [np.infty, -np.infty],
@@ -329,18 +447,24 @@ def TestAdd():
         [3.052E-5, 3.052E-5], #subnormal + subnormal = normal
         [6.104E-5, -3.052E-5], #normal + subnormal = subnormal
         [6.104E-5, -6.11E-5], #normal + normal = subnormal
-
     ]
-    for a, b in testCases:
-        A = MyFloat(a, np.float16)
-        B = MyFloat(b, np.float16)
+    autoGenCases = []
+    with open('TestCases1.txt') as f:
+        autoGenCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
+    # with open('TestCases2.txt') as f:
+    #     autoGenCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
+
+    for a, b in testCases + autoGenCases:
+        A = MyFloat(a, currType)
+        B = MyFloat(b, currType)
         C = MyFloat.Add(A, B, True)
         mine = C.original
         actual = A.original + B.original
         if C.EqualsFloat(actual):
-            print('----------------')
-            print(A, '+', B)
-            print('Matches: ', MyFloat(actual))
+            # print('----------------')
+            # print(A, '+', B)
+            # print('Matches: ', MyFloat(actual))
+            pass
         else:
             print('----------------')
             print(A, '+', B)

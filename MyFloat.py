@@ -235,6 +235,7 @@ class MyFloat:
             # Add
             if AS != BS:
                 CS = AS if AT > BT else BS
+                # subtraction here must include lost bits due to rounding
                 CT = abs(AT - BT)
             else:
                 CT = AT + BT
@@ -412,12 +413,16 @@ class Rounding:
             self.lostBits = ''
         return retval
 
+    def Subtract(self, valA, valB):
+        # I need to track bits that were right-shifted past the significand and account for them here.
+        return valA - valB
+
 
 def TestAdd():
     currType = np.float16
     testCases = [
-        [2050, 3],
         [0.5874, -0.1327],
+        [2050, 3],
         [0.7217, 1.865E-3],
         [1.0/3.0, 2.0/3.0],
         [2048, 3],

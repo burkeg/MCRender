@@ -320,6 +320,7 @@ class MyFloat:
                 # Check for infinity
                 if exponent == (1 << exponentBits) - 1:
                     significand = 0
+                    roundingBits.Clear()
                     break
             else:
                 # Clear out the implicit leading 1 in the significand
@@ -399,6 +400,13 @@ class Rounding:
     def __init__(self):
         self.lostBits = ''
 
+    def __str__(self):
+        return "'" + self.lostBits + "': " + str([self.guard, self.round, self.sticky])
+    def __unicode__(self):
+        return str(self)
+    def __repr__(self):
+        return str(self)
+
     @property
     def guard(self):
         return '1' in self.lostBits[0:1]
@@ -410,6 +418,9 @@ class Rounding:
     @property
     def sticky(self):
         return '1' in self.lostBits[2:]
+
+    def Clear(self):
+        self.lostBits = ''
 
     def RShift(self, val, shiftAmt):
         if shiftAmt == 0:
@@ -425,7 +436,7 @@ class Rounding:
             retval = val << shiftAmt
         else:
             retval = (val << shiftAmt) | (int(self.lostBits, 2) << (shiftAmt - len(self.lostBits)))
-            self.lostBits = ''
+            self.Clear()
         return retval
 
     def Subtract(self, valA, valB):
@@ -523,7 +534,7 @@ def TestAdd():
             print(A.original, B.original)
             # print('FAILED: ', C, ' Actual: ', MyFloat(actual))
         total += 1
-    print(str(passed/total) + '%')
+    print(str(100*passed/total) + '%')
 
 def Test():
     print(MyFloat(np.float16(np.inf)))

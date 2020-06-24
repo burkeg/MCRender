@@ -6,6 +6,9 @@ from enum import Enum
 # http://weitz.de/ieee/
 # https://ieeexplore.ieee.org/abstract/document/4380621/authors#authors
 
+# I am intentionally hitting failure cases to make sure I handle them properly
+np.seterr(all='ignore')
+
 class FloatFlag(Enum):
     OK = 0
     INVALID = 1 << 0
@@ -221,12 +224,6 @@ class MyFloat:
         # x + +-0 = x for x different from 0
         elif aZero or bZero:
             CS, CE, CT = (AS, AE, AT) if bZero else (BS, BE, BT)
-        # If a is much larger than b, all trailing bits from b are lost so replace them with a's trailing bits
-        # TODO check this math and make sure it's not off by a bit or two
-        elif AE - BE >= a.SignificandBits + 2:
-            CS = AS
-            CE = AE
-            CT = AT
         else:
             # Normal operation
             # Set the exponent
@@ -257,7 +254,7 @@ class MyFloat:
             # Normalize
             CE, CT, _, roundingBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
 
-            CE, CT = MyFloat.Round(CS, CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
+            CE, CT = MyFloat.Round(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
 
         c.S = format(CS, '01b')
         c.E = format(CE, '0' + str(a.ExponentBits) + 'b')
@@ -363,7 +360,7 @@ class MyFloat:
     # http://pages.cs.wisc.edu/~david/courses/cs552/S12/handouts/guardbits.pdf
     # round to nearest, ties to even
     @staticmethod
-    def Round(sign, exponent, significand, exponentBits, significandBits, roundingBits):
+    def Round(exponent, significand, exponentBits, significandBits, roundingBits):
         # slicing operator returns an empty list if range isn't applicable to lostBits
         assert isinstance(roundingBits, Rounding)
         guardBit, roundBit, stickyBit = (roundingBits.guard, roundingBits.round, roundingBits.sticky)
@@ -492,7 +489,7 @@ def TestAdd():
     previouslyFailedRandomCases = []
     with open('UtahActualCalculationErrors.txt') as f:
         utahCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
-    for _ in range(100_000):
+    for _ in range(1_000_000):
         randomCases.append(
             [
                 MyFloat.bin2floatStatic(\
@@ -510,10 +507,10 @@ def TestAdd():
         previouslyFailedRandomCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
 
     allCases = []
-    # allCases.extend(manualCases)
-    # allCases.extend(utahCases)
+    allCases.extend(manualCases)
+    allCases.extend(utahCases)
     allCases.extend(randomCases)
-    # allCases.extend(previouslyFailedRandomCases)
+    allCases.extend(previouslyFailedRandomCases)
     passed = 0
     total = 0
     for a, b in allCases:

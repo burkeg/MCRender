@@ -3,11 +3,18 @@ import math
 import random as rand
 import struct
 from enum import Enum
+import operator
 # http://weitz.de/ieee/
 # https://ieeexplore.ieee.org/abstract/document/4380621/authors#authors
 
 # I am intentionally hitting failure cases to make sure I handle them properly
 np.seterr(all='ignore')
+op2str = {
+    operator.add: '+',
+    operator.sub: '-',
+    operator.mul: '*',
+}
+randomizedCases = 10_000
 
 class FloatFlag(Enum):
     OK = 0
@@ -59,6 +66,10 @@ class MyFloat:
         return MyFloat.Add(self, other)
     def __radd__(self, other):
         return MyFloat.Add(self, other)
+    def __sub__(self, other):
+        return MyFloat.Sub(self, other)
+    def __rsub__(self, other):
+        return MyFloat.Sub(self, other)
     def __mul__(self, other):
         return MyFloat.Multiply(self, other)
     def __rmul__(self, other):
@@ -92,13 +103,13 @@ class MyFloat:
         '''
         if myFormat == np.float16:
             h = int(b, 2).to_bytes(2, byteorder="big")
-            return struct.unpack('>e', h)[0]
+            return np.float16(struct.unpack('>e', h)[0])
         elif myFormat == np.float32:
             h = int(b, 2).to_bytes(4, byteorder="big")
-            return struct.unpack('>f', h)[0]
+            return np.float32(struct.unpack('>f', h)[0])
         elif myFormat == np.float64:
             h = int(b, 2).to_bytes(8, byteorder="big")
-            return struct.unpack('>d', h)[0]
+            return np.float64(struct.unpack('>d', h)[0])
 
 
     def float2bin(self, b):
@@ -122,8 +133,9 @@ class MyFloat:
             [d] = struct.unpack(">Q", struct.pack(">d", f))
             return f'{d:064b}'
 
-    def EqualsFloat(self, actualFloat):
+    def EqualsFloatBits(self, actualFloat):
         assert type(actualFloat) == self.format
+        # not being nitpicky as long as they're both NaN's
         if math.isnan(self.original) or math.isnan(actualFloat):
             return math.isnan(self.original) and math.isnan(actualFloat)
         mine = self.S + self.E + self.T
@@ -169,12 +181,62 @@ class MyFloat:
             raise Exception('Unacceptable format')
 
     @staticmethod
+    def Multiply(a, b, manual=True):
+        assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
+        if not manual:
+            return MyFloat(a.original * b.original)
+        pInf = (0, (1 << a.ExponentBits) - 1, 0)
+        nInf = (1, (1 << a.ExponentBits) - 1, 0)
+        NaN = (1, (1 << a.ExponentBits) - 1, 1 << (a.SignificandBits - 1))
+        pZero = (0, 0, 0)
+        nZero = (1, 0, 0)
+
+        c = MyFloat(valueFormat=a.format)
+        AS, AE, AT = [int(_, 2) for _ in [a.S, a.E, a.T]]
+        BS, BE, BT = [int(_, 2) for _ in [b.S, b.E, b.T]]
+        CS, CE, CT = [int(_, 2) for _ in [c.S, c.E, c.T]]
+
+        aInf = MyFloat._IsInfinite(AE, AT, a.ExponentBits)
+        bInf = MyFloat._IsInfinite(BE, BT, b.ExponentBits)
+        aNaN = MyFloat._IsNaN(AE, AT, a.ExponentBits)
+        bNaN = MyFloat._IsNaN(BE, BT, b.ExponentBits)
+        aZero = MyFloat._IsZero(AE, AT)
+        bZero = MyFloat._IsZero(BE, BT)
+
+        # Detect special cases
+        # NaN
+        if aNaN or bNaN:
+            CS, CE, CT = (AS, AE, AT) if aNaN else (BS, BE, BT)
+        # Cannot add +inf to -inf
+        elif aInf and bInf:
+            if AS != BS:
+                CS, CE, CT = NaN
+            else:
+                CS, CE, CT = pInf if AS == 0 else nInf
+        # Adding infinite to finite
+        elif aInf ^ bInf:
+            CS, CE, CT = pInf
+            CS = AS if aInf else BS
+        # +-Zero plus +-Zero
+        elif aZero and bZero:
+            if AS == 1 and BS == 1:
+                CS, CE, CT = nZero
+            else:
+                CS, CE, CT = pZero
+        # x + -x = +0 always
+        elif AS != BS and AE == BE and AT == BT:
+            CS, CE, CT = pZero
+        # x + +-0 = x for x different from 0
+        elif aZero or bZero:
+            CS, CE, CT = (AS, AE, AT) if bZero else (BS, BE, BT)
+        else:
+            pass
+
+    @staticmethod
     def Add(a, b, manual=True):
         assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
         if not manual:
             return MyFloat(a.original + b.original)
-        inexact = False
-        lostBits = ''
         pInf = (0, (1 << a.ExponentBits) - 1, 0)
         nInf = (1, (1 << a.ExponentBits) - 1, 0)
         NaN = (1, (1 << a.ExponentBits) - 1, 1 << (a.SignificandBits - 1))
@@ -191,12 +253,12 @@ class MyFloat:
             AS, AE, AT = BS, BE, BT
             BS, BE, BT = tmpS, tmpE, tmpT
 
-        aInf = MyFloat.IsInfinite(AE, AT, a.ExponentBits)
-        bInf = MyFloat.IsInfinite(BE, BT, b.ExponentBits)
-        aNaN = MyFloat.IsNaN(AE, AT, a.ExponentBits)
-        bNaN = MyFloat.IsNaN(BE, BT, b.ExponentBits)
-        aZero = MyFloat.IsZero(AE, AT)
-        bZero = MyFloat.IsZero(BE, BT)
+        aInf = MyFloat._IsInfinite(AE, AT, a.ExponentBits)
+        bInf = MyFloat._IsInfinite(BE, BT, b.ExponentBits)
+        aNaN = MyFloat._IsNaN(AE, AT, a.ExponentBits)
+        bNaN = MyFloat._IsNaN(BE, BT, b.ExponentBits)
+        aZero = MyFloat._IsZero(AE, AT)
+        bZero = MyFloat._IsZero(BE, BT)
 
         # Detect special cases
         # NaN
@@ -269,6 +331,18 @@ class MyFloat:
         return c
 
     @staticmethod
+    def Sub(a, b, manual=True):
+        assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
+        if not manual:
+            return MyFloat(a.original - b.original)
+        if a.IsNaN() or b.IsNaN():
+            return MyFloat.Add(a, b, manual=True)
+        bNeg = MyFloat(b.original)
+        bNeg.S = '0' if bNeg.S == '1' else '1'
+        bNeg.Reinterpret()
+        return MyFloat.Add(a, bNeg)
+
+    @staticmethod
     def rShiftSignificand(significand, shiftAmt, prevRoundingBits):
         prevGuardBit, prevRoundBit, prevStickyBit = prevRoundingBits
         guardBit, roundBit, stickyBit = prevRoundingBits
@@ -290,16 +364,25 @@ class MyFloat:
 
         return (guardBit, roundBit, stickyBit)
 
+    def IsInfinite(self):
+        return MyFloat._IsInfinite(self.E, self.T, self.ExponentBits)
+
     @staticmethod
-    def IsInfinite(exponent, significand, exponentbits):
+    def _IsInfinite(exponent, significand, exponentbits):
         return exponent == (1 << exponentbits) - 1 and significand == 0
 
-    @staticmethod
-    def IsNaN(exponent, significand, exponentbits):
-        return exponent == (1 << exponentbits) - 1 and significand != 0
+    def IsNaN(self):
+        return MyFloat._IsNaN(self.E, self.T, self.ExponentBits)
 
     @staticmethod
-    def IsZero(exponent, significand):
+    def _IsNaN(exponent, significand, exponentbits):
+        return exponent == (1 << exponentbits) - 1 and significand != 0
+
+    def IsZero(self):
+        return MyFloat._IsZero(self.E, self.T)
+
+    @staticmethod
+    def _IsZero(exponent, significand):
         return exponent == 0 and significand == 0
 
     @staticmethod
@@ -385,14 +468,6 @@ class MyFloat:
             significand = 0
         return exponent, significand
 
-    @staticmethod
-    def Multiply(a, b, manual=False):
-        assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
-        if not manual:
-            return MyFloat(a.original * b.original)
-        else:
-            raise NotImplementedError()
-
 class Rounding:
     def __init__(self):
         self.lostBits = ''
@@ -447,8 +522,7 @@ class Rounding:
         self.lostBits = ''
         return self.RShift(valA - valB, shiftAmt)
 
-
-def TestAdd():
+def TestOp(operation):
     currType = np.float16
     manualCases = [
         [0.5874, -0.1327],
@@ -489,7 +563,7 @@ def TestAdd():
     previouslyFailedRandomCases = []
     with open('UtahActualCalculationErrors.txt') as f:
         utahCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
-    for _ in range(1_000_000):
+    for _ in range(randomizedCases):
         randomCases.append(
             [
                 MyFloat.bin2floatStatic(\
@@ -516,33 +590,26 @@ def TestAdd():
     for a, b in allCases:
         A = MyFloat(a, currType)
         B = MyFloat(b, currType)
-        C = MyFloat.Add(A, B, True)
+        C = operation(A, B)
         mine = C.original
-        actual = A.original + B.original
-        if C.EqualsFloat(actual):
+        actual = operation(A.original, B.original)
+        if C.EqualsFloatBits(actual):
             passed += 1
             # print('----------------')
-            # print(A, '+', B)
+            # print(A, op2str[operation], B)
             # print('Matches: ', MyFloat(actual))
             pass
         else:
-            # print('----------------')
-            # print(A, '+', B)
-            print(A.original, B.original)
-            # print('FAILED: ', C, ' Actual: ', MyFloat(actual))
+            print('----------------')
+            print(A, op2str[operation], B)
+            # print(A.original, B.original)
+            print('FAILED: ', C, ' Actual: ', MyFloat(actual))
         total += 1
-    print(str(100*passed/total) + '%')
+    print(op2str[operation] + ':', str(100*passed/total) + '%')
 
-def Test():
-    print(MyFloat(np.float16(np.inf)))
-    print(MyFloat(np.float16(np.inf-np.inf)))
-    print(MyFloat(np.float16(np.NaN)))
-    print(MyFloat(np.float16(0)))
-    print(MyFloat(np.float16(1)))
-    print(MyFloat(np.float16(2**14)))
-    print(MyFloat(np.float16(2**15)))
-    print(MyFloat(np.float16(2**16)))
 
 
 if __name__ == '__main__':
-    TestAdd()
+    # TestOp(operator.add)
+    # TestOp(operator.sub)
+    TestOp(operator.mul)

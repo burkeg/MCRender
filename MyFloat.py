@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import random as rand
 import struct
 from enum import Enum
 # http://weitz.de/ieee/
@@ -75,41 +76,53 @@ class MyFloat:
     def AsBinary(self):
         return self.float2bin(self.original)
 
-    # https://stackoverflow.com/a/59594903
     def bin2float(self, b):
+        return MyFloat.bin2floatStatic(self.format, b)
+
+    # https://stackoverflow.com/a/59594903
+    @staticmethod
+    def bin2floatStatic(myFormat, b):
         ''' Convert binary string to a float.
 
         Attributes:
             :b: Binary string to transform.
         '''
-        if self.format == np.float16:
+        if myFormat == np.float16:
             h = int(b, 2).to_bytes(2, byteorder="big")
             return struct.unpack('>e', h)[0]
-        elif self.format == np.float32:
+        elif myFormat == np.float32:
             h = int(b, 2).to_bytes(4, byteorder="big")
             return struct.unpack('>f', h)[0]
-        elif self.format == np.float64:
+        elif myFormat == np.float64:
             h = int(b, 2).to_bytes(8, byteorder="big")
             return struct.unpack('>d', h)[0]
 
-    def float2bin(self, f):
+
+    def float2bin(self, b):
+        return MyFloat.float2binStatic(self.format, b)
+
+    # https://stackoverflow.com/a/59594903
+    @staticmethod
+    def float2binStatic(myFormat, f):
         ''' Convert float to n-bit binary string.
 
         Attributes:
             :f: Float number to transform.
         '''
-        if self.format == np.float16:
+        if myFormat == np.float16:
             [d] = struct.unpack(">H", struct.pack(">e", f))
             return f'{d:016b}'
-        elif self.format == np.float32:
+        elif myFormat == np.float32:
             [d] = struct.unpack(">I", struct.pack(">f", f))
             return f'{d:032b}'
-        elif self.format == np.float64:
+        elif myFormat == np.float64:
             [d] = struct.unpack(">Q", struct.pack(">d", f))
             return f'{d:064b}'
 
     def EqualsFloat(self, actualFloat):
         assert type(actualFloat) == self.format
+        if math.isnan(self.original) or math.isnan(actualFloat):
+            return math.isnan(self.original) and math.isnan(actualFloat)
         mine = self.S + self.E + self.T
         target = self.float2bin(actualFloat)
         return mine == target
@@ -236,7 +249,7 @@ class MyFloat:
             if AS != BS:
                 CS = AS if AT > BT else BS
                 # subtraction here must include lost bits due to rounding
-                CT = abs(AT - BT)
+                CT = roundingBits.Subtract(AT, BT)
             else:
                 CT = AT + BT
                 CS = AS
@@ -399,6 +412,8 @@ class Rounding:
         return '1' in self.lostBits[2:]
 
     def RShift(self, val, shiftAmt):
+        if shiftAmt == 0:
+            return val
         self.lostBits = format(val % (1 << shiftAmt), '0' + str(shiftAmt) + 'b') + self.lostBits
         return val >> shiftAmt
 
@@ -415,12 +430,19 @@ class Rounding:
 
     def Subtract(self, valA, valB):
         # I need to track bits that were right-shifted past the significand and account for them here.
-        return valA - valB
+        shiftAmt = len(self.lostBits)
+        if shiftAmt == 0:
+            return valA - valB
+        valA <<= shiftAmt
+        valB <<= shiftAmt
+        valB |= int(self.lostBits, 2)
+        self.lostBits = ''
+        return self.RShift(valA - valB, shiftAmt)
 
 
 def TestAdd():
     currType = np.float16
-    testCases = [
+    manualCases = [
         [0.5874, -0.1327],
         [2050, 3],
         [0.7217, 1.865E-3],
@@ -428,14 +450,15 @@ def TestAdd():
         [2048, 3],
         [1, 0],
         [1, -2],
+        [1, -1],
         [1.001, 1.0],
         [1.0, 1.0],
         [0.0, 0.0],
         [0.0, -0.0],
         [-0.0, 0.0],
         [-0.0, -0.0],
-        [np.infty - np.infty, np.nan],
-        [np.nan, np.infty - np.infty],
+        [np.infty - np.infty, np.nan], # NaN from invalid calc + plain NaN
+        [np.nan, np.infty - np.infty], # plain NaN + NaN from invalid calc
         [3, 7],
         [30, 70],
         [300, 700],
@@ -453,27 +476,54 @@ def TestAdd():
         [6.104E-5, -3.052E-5], #normal + subnormal = subnormal
         [6.104E-5, -6.11E-5], #normal + normal = subnormal
     ]
-    autoGenCases = []
-    with open('TestCases1.txt') as f:
-        autoGenCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
-    # with open('TestCases2.txt') as f:
-    #     autoGenCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
+    utahCases = []
+    randomCases = []
+    previouslyFailedRandomCases = []
+    with open('UtahActualCalculationErrors.txt') as f:
+        utahCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
+    for _ in range(100_000):
+        randomCases.append(
+            [
+                MyFloat.bin2floatStatic(\
+                    currType,
+                    format(
+                        rand.getrandbits(np.dtype(currType).itemsize * 8),
+                        '01b')),
+                MyFloat.bin2floatStatic(\
+                    currType,
+                    format(
+                        rand.getrandbits(np.dtype(currType).itemsize * 8),
+                        '01b'))
+            ])
+    with open('RandomTestFailures.txt') as f:
+        previouslyFailedRandomCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
 
-    for a, b in testCases + autoGenCases:
+    allCases = []
+    # allCases.extend(manualCases)
+    # allCases.extend(utahCases)
+    allCases.extend(randomCases)
+    # allCases.extend(previouslyFailedRandomCases)
+    passed = 0
+    total = 0
+    for a, b in allCases:
         A = MyFloat(a, currType)
         B = MyFloat(b, currType)
         C = MyFloat.Add(A, B, True)
         mine = C.original
         actual = A.original + B.original
         if C.EqualsFloat(actual):
+            passed += 1
             # print('----------------')
             # print(A, '+', B)
             # print('Matches: ', MyFloat(actual))
             pass
         else:
-            print('----------------')
-            print(A, '+', B)
-            print('FAILED: ', C, ' Actual: ', MyFloat(actual))
+            # print('----------------')
+            # print(A, '+', B)
+            print(A.original, B.original)
+            # print('FAILED: ', C, ' Actual: ', MyFloat(actual))
+        total += 1
+    print(str(passed/total) + '%')
 
 def Test():
     print(MyFloat(np.float16(np.inf)))

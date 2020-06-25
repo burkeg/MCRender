@@ -7,15 +7,6 @@ import operator
 # http://weitz.de/ieee/
 # https://ieeexplore.ieee.org/abstract/document/4380621/authors#authors
 
-# I am intentionally hitting failure cases to make sure I handle them properly
-np.seterr(all='ignore')
-op2str = {
-    operator.add: '+',
-    operator.sub: '-',
-    operator.mul: '*',
-}
-randomizedCases = 10_000
-
 class FloatFlag(Enum):
     OK = 0
     INVALID = 1 << 0
@@ -74,6 +65,152 @@ class MyFloat:
         return MyFloat.Multiply(self, other)
     def __rmul__(self, other):
         return MyFloat.Multiply(self, other)
+
+    # https://www.research.ibm.com/haifa/projects/verification/fpgen/papers/ieee-test-suite-v2.pdf
+    # Binary floating-point types
+    # Zero
+    def Zero(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' * retVal.ExponentBits
+        retVal.T = '0' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+    # Smallest possible subnormal number
+    def MinSubNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' * retVal.ExponentBits
+        retVal.T = ('0' * (retVal.SignificandBits - 1)) + '1'
+        retVal.Reinterpret()
+        return retVal
+
+    # Smallest number larger than the smallest possible subnormal number
+    def NextMinSubNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' * retVal.ExponentBits
+        retVal.T = ('0' * (retVal.SignificandBits - 2)) + '10'
+        retVal.Reinterpret()
+        return retVal
+
+    # Middle subnormal number in total ordering of the subnormals
+    def MidSubNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        minSub = self.MinSubNorm()
+        maxSub = self.MaxSubNorm()
+        retVal.T = format((int(minSub.T, 2) + int(maxSub.T, 2)) // 2, '0' + str(self.SignificandBits) + 'b')
+        retVal.Reinterpret()
+        return retVal
+
+    # Largest number smaller than the largest possible subnormal number
+    def PrevMaxSubNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' * retVal.ExponentBits
+        retVal.T = ('1' * (retVal.SignificandBits - 1)) + '0'
+        retVal.Reinterpret()
+        return retVal
+
+    # Largest possible subnormal number
+    def MaxSubNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' * retVal.ExponentBits
+        retVal.T = '1' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+
+    # Smallest possible normal number
+    def MinNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = ('0' * (retVal.ExponentBits - 1)) + '1'
+        retVal.T = '0' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+
+    # Smallest number larger than the smallest possible normal number
+    def NextMinNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = ('0' * (retVal.ExponentBits - 1)) + '1'
+        retVal.T = ('0' * (retVal.SignificandBits - 1)) + '1'
+        retVal.Reinterpret()
+        return retVal
+
+    # Middle normal number in total ordering of the normals
+    def MidNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        minSub = self.MinNorm()
+        maxSub = self.MaxNorm()
+        retVal.E = format((int(minSub.E, 2) + int(maxSub.E, 2)) // 2, '0' + str(self.ExponentBits) + 'b')
+        retVal.T = format((int(minSub.T, 2) + int(maxSub.T, 2)) // 2, '0' + str(self.SignificandBits) + 'b')
+        retVal.Reinterpret()
+        return retVal
+
+    # Largest number smaller than the largest possible normal number
+    def PrevMaxNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = ('1' * (retVal.ExponentBits - 1)) + '0'
+        retVal.T = '1' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+
+    # Largest possible normal number
+    def MaxNorm(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = ('1' * (retVal.ExponentBits - 1)) + '0'
+        retVal.T = ('1' * (retVal.SignificandBits - 1)) + '0'
+        retVal.Reinterpret()
+        return retVal
+
+    # Positive infinity
+    def Infinity(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '1' * retVal.ExponentBits
+        retVal.T = '0' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+
+    # Default NaN
+    def DefaultNaN(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '1' * retVal.ExponentBits
+        retVal.T = '1' + ('0' * (retVal.SignificandBits - 1))
+        retVal.Reinterpret()
+        return retVal
+
+    # Largest number smaller than one
+    def PrevOne(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' + ('1' * (retVal.ExponentBits - 2)) + '0'
+        retVal.T = '1' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+
+    # One
+    def One(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' + ('1' * (retVal.ExponentBits - 1))
+        retVal.T = '0' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+
+    # Smallest number larger than one
+    def NextOne(self):
+        retVal = MyFloat(valueFormat=self.format)
+        retVal.S = '0'
+        retVal.E = '0' + ('1' * (retVal.ExponentBits - 1))
+        retVal.T = ('0' * (retVal.SignificandBits - 1)) + '1'
+        retVal.Reinterpret()
+        return retVal
 
     @staticmethod
     def SetFlag(flag):
@@ -522,94 +659,3 @@ class Rounding:
         self.lostBits = ''
         return self.RShift(valA - valB, shiftAmt)
 
-def TestOp(operation):
-    currType = np.float16
-    manualCases = [
-        [0.5874, -0.1327],
-        [2050, 3],
-        [0.7217, 1.865E-3],
-        [1.0/3.0, 2.0/3.0],
-        [2048, 3],
-        [1, 0],
-        [1, -2],
-        [1, -1],
-        [1.001, 1.0],
-        [1.0, 1.0],
-        [0.0, 0.0],
-        [0.0, -0.0],
-        [-0.0, 0.0],
-        [-0.0, -0.0],
-        [np.infty - np.infty, np.nan], # NaN from invalid calc + plain NaN
-        [np.nan, np.infty - np.infty], # plain NaN + NaN from invalid calc
-        [3, 7],
-        [30, 70],
-        [300, 700],
-        [3000, 7000],
-        [3, 7000],
-        [1, 2047],
-        [2, 2047],
-        [-27, np.infty],
-        [np.infty, np.infty],
-        [np.infty, -np.infty],
-        [-np.infty, -np.infty],
-        [-np.infty, np.infty],
-        [np.NaN, 0],
-        [3.052E-5, 3.052E-5], #subnormal + subnormal = normal
-        [6.104E-5, -3.052E-5], #normal + subnormal = subnormal
-        [6.104E-5, -6.11E-5], #normal + normal = subnormal
-    ]
-    utahCases = []
-    randomCases = []
-    previouslyFailedRandomCases = []
-    with open('UtahActualCalculationErrors.txt') as f:
-        utahCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
-    for _ in range(randomizedCases):
-        randomCases.append(
-            [
-                MyFloat.bin2floatStatic(\
-                    currType,
-                    format(
-                        rand.getrandbits(np.dtype(currType).itemsize * 8),
-                        '01b')),
-                MyFloat.bin2floatStatic(\
-                    currType,
-                    format(
-                        rand.getrandbits(np.dtype(currType).itemsize * 8),
-                        '01b'))
-            ])
-    with open('RandomTestFailures.txt') as f:
-        previouslyFailedRandomCases.extend([[currType(x) for x in line.split(' ')] for line in f.readlines()])
-
-    allCases = []
-    allCases.extend(manualCases)
-    allCases.extend(utahCases)
-    allCases.extend(randomCases)
-    allCases.extend(previouslyFailedRandomCases)
-    passed = 0
-    total = 0
-    for a, b in allCases:
-        A = MyFloat(a, currType)
-        B = MyFloat(b, currType)
-        C = operation(A, B)
-        mine = C.original
-        actual = operation(A.original, B.original)
-        if C.EqualsFloatBits(actual):
-            passed += 1
-            # print('----------------')
-            # print(A, op2str[operation], B)
-            # print('Matches: ', MyFloat(actual))
-            pass
-        else:
-            print('----------------')
-            print(A, op2str[operation], B)
-            # print(A.original, B.original)
-            print('FAILED: ', C, ' Actual: ', MyFloat(actual))
-        total += 1
-    print(op2str[operation] + ':', str(100*passed/total) + '%')
-
-
-
-if __name__ == '__main__':
-    # TestOp(operator.add)
-    # TestOp(operator.sub)
-    TestOp(operator.mul)

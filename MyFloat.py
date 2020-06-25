@@ -318,6 +318,10 @@ class MyFloat:
             raise Exception('Unacceptable format')
 
     @staticmethod
+    def MultSign(S1, S2):
+        return 0 if S1 == S2 else 1
+
+    @staticmethod
     def Multiply(a, b, manual=True):
         assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
         if not manual:
@@ -344,30 +348,49 @@ class MyFloat:
         # NaN
         if aNaN or bNaN:
             CS, CE, CT = (AS, AE, AT) if aNaN else (BS, BE, BT)
-        # Cannot add +inf to -inf
-        elif aInf and bInf:
-            if AS != BS:
+        # Infinity
+        elif aInf or bInf:
+            # Cannot multiply infinity by zero
+            if aZero or bZero:
                 CS, CE, CT = NaN
             else:
-                CS, CE, CT = pInf if AS == 0 else nInf
-        # Adding infinite to finite
-        elif aInf ^ bInf:
-            CS, CE, CT = pInf
-            CS = AS if aInf else BS
-        # +-Zero plus +-Zero
-        elif aZero and bZero:
-            if AS == 1 and BS == 1:
-                CS, CE, CT = nZero
-            else:
-                CS, CE, CT = pZero
-        # x + -x = +0 always
-        elif AS != BS and AE == BE and AT == BT:
-            CS, CE, CT = pZero
-        # x + +-0 = x for x different from 0
+                # otherwise return infinity with the proper sign
+                CS, CE, CT = pInf if MyFloat.MultSign(AS, BS) == 0 else nInf
         elif aZero or bZero:
-            CS, CE, CT = (AS, AE, AT) if bZero else (BS, BE, BT)
+            CS = MyFloat.MultSign(AS, BS)
+            CE, CT = (AE, AT) if aZero else (BE, BT)
         else:
-            pass
+            # Normal operation
+
+            # Add in implicit leading digit
+            leadingDigitA = 0 if AE == 0 else 1
+            leadingDigitB = 0 if BE == 0 else 1
+            AT |= leadingDigitA << a.SignificandBits
+            BT |= leadingDigitB << b.SignificandBits
+
+            roundingBits = Rounding()
+            # Mult
+            CS = MyFloat.MultSign(AS, BS)
+            CE = max(AE, 1) + max(BE, 1) - c.ExponentBias
+            CT = AT * BT
+            CT = roundingBits.RShift(CT, c.SignificandBits)
+
+            # Normalize
+            CE, CT, roundingBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
+
+            CE, CT = MyFloat.Round(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
+
+        c.S = format(CS, '01b')
+        c.E = format(CE, '0' + str(a.ExponentBits) + 'b')
+        c.T = format(CT, '0' + str(a.SignificandBits) + 'b')
+        # We probably messed up normalization if these assertions fail
+        assert len(c.S) == 1
+        assert len(c.E) == a.ExponentBits
+        assert len(c.T) == a.SignificandBits
+        c.Reinterpret()
+        if MyFloat.logFailures and MyFloat(a.original * b.original).original != c.original:
+            MyFloat.failureDict[(a.original, b.original)] = (MyFloat(a.original * b.original).original, c.original)
+        return c
 
     @staticmethod
     def Add(a, b, manual=True):
@@ -451,7 +474,7 @@ class MyFloat:
                 CS = AS
 
             # Normalize
-            CE, CT, _, roundingBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
+            CE, CT, roundingBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
 
             CE, CT = MyFloat.Round(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
 
@@ -524,6 +547,47 @@ class MyFloat:
 
     @staticmethod
     def Normalize(exponent, significand, exponentBits, significandBits, roundingBits):
+        if significand == 0:
+            return 0, 0, roundingBits
+        if significand >= 1 << (significandBits + 1):
+            # Significand >= 2
+            # Rightshift significand and add to exponent until infinity
+            # or 1 <= significand < 2
+            while significand >= 1 << (significandBits + 1):
+                significand = roundingBits.RShift(significand, 1)
+                exponent += 1
+                # Check for infinity
+                if exponent >= (1 << exponentBits) - 1:
+                    break
+            else:
+                # Clear out the implicit leading 1 in the significand
+                significand &= (1 << significandBits) - 1
+
+        else:
+            # 0 <= significand < 2
+            # Leftshift significand and subtract from exponent until subnormal
+            # or 1 <= significand < 2
+            while significand < 1 << significandBits:
+                if exponent != 1:
+                    # check if it's okay to LShift
+                    significand = roundingBits.LShift(significand, 1)
+                exponent -= 1
+                # Check for subnormal
+                if exponent == 0:
+                    break
+            else:
+                # Clear out the implicit leading 1 in the significand
+                significand &= (1 << significandBits) - 1
+        if exponent < 0:
+            roundingBits.Clear()
+            return 0, 0, roundingBits
+        elif exponent >= (1 << exponentBits) - 1:
+            roundingBits.Clear()
+            return (1 << exponentBits) - 1, 0, roundingBits
+        return exponent, significand, roundingBits
+
+    @staticmethod
+    def OldNormalize(exponent, significand, exponentBits, significandBits, roundingBits):
         infty = False
         infoLost = False
         if significand >= 1 << (significandBits + 1):
@@ -561,7 +625,7 @@ class MyFloat:
             # Clear out the implicit leading 1 in the significand
             significand &= (1 << significandBits) - 1
             pass
-        elif exponent == 0 and significand >= 1 << significandBits:
+        elif exponent <= 0 and significand >= 1 << significandBits:
             # subnormal getting upgraded
             exponent = 1
             significand &= (1 << significandBits) - 1
@@ -569,8 +633,6 @@ class MyFloat:
         elif exponent == 0:
             # once a denormal always a denormal!
             pass
-
-
         else:
             raise Exception('Unexpected case')
 

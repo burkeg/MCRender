@@ -19,7 +19,12 @@ class FloatTesting:
                  specialAndRandomCases=True):
         self.cases = []
         self.typeToTest = typeToTest
-        self.operators = [operator.add, operator.sub]#, operator.mul, operator.truediv]
+        self.operators = [
+            operator.add,
+            operator.sub,
+            operator.mul,
+            # operator.truediv
+        ]
         if manualCases:
             self.cases.extend(self.buildManualCases())
         if utahCases:
@@ -36,39 +41,40 @@ class FloatTesting:
 
     def buildManualCases(self):
         return [
-                [0.5874, -0.1327],
-                [2050, 3],
-                [0.7217, 1.865E-3],
-                [1.0/3.0, 2.0/3.0],
-                [2048, 3],
-                [1, 0],
-                [1, -2],
-                [1, -1],
-                [1.001, 1.0],
-                [1.0, 1.0],
-                [0.0, 0.0],
-                [0.0, -0.0],
-                [-0.0, 0.0],
-                [-0.0, -0.0],
-                [np.infty - np.infty, np.nan], # NaN from invalid calc + plain NaN
-                [np.nan, np.infty - np.infty], # plain NaN + NaN from invalid calc
-                [3, 7],
-                [30, 70],
-                [300, 700],
-                [3000, 7000],
-                [3, 7000],
-                [1, 2047],
-                [2, 2047],
-                [-27, np.infty],
-                [np.infty, np.infty],
-                [np.infty, -np.infty],
-                [-np.infty, -np.infty],
-                [-np.infty, np.infty],
-                [np.NaN, 0],
-                [3.052E-5, 3.052E-5], #subnormal + subnormal = normal
-                [6.104E-5, -3.052E-5], #normal + subnormal = subnormal
-                [6.104E-5, -6.11E-5], #normal + normal = subnormal
-            ]
+            [300, 700],
+            [1.0, 1.0],
+            [0.5874, -0.1327],
+            [2050, 3],
+            [0.7217, 1.865E-3],
+            [1.0/3.0, 2.0/3.0],
+            [2048, 3],
+            [1, 0],
+            [1, -2],
+            [1, -1],
+            [1.001, 1.0],
+            [0.0, 0.0],
+            [0.0, -0.0],
+            [-0.0, 0.0],
+            [-0.0, -0.0],
+            [np.infty - np.infty, np.nan], # NaN from invalid calc + plain NaN
+            [np.nan, np.infty - np.infty], # plain NaN + NaN from invalid calc
+            [3, 7],
+            [30, 70],
+            [300, 700],
+            [3000, 7000],
+            [3, 7000],
+            [1, 2047],
+            [2, 2047],
+            [-27, np.infty],
+            [np.infty, np.infty],
+            [np.infty, -np.infty],
+            [-np.infty, -np.infty],
+            [-np.infty, np.infty],
+            [np.NaN, 0],
+            [3.052E-5, 3.052E-5], #subnormal + subnormal = normal
+            [6.104E-5, -3.052E-5], #normal + subnormal = subnormal
+            [6.104E-5, -6.11E-5], #normal + normal = subnormal
+        ]
 
     def buildUtahCases(self):
         utahCases = []
@@ -174,12 +180,13 @@ class FloatTesting:
                     # print('Matches: ', MyFloat(actual))
                     pass
                 else:
-                    print('----------------')
-                    print(A, op2str[operation], B)
-                    # print(A.original, B.original)
-                    print('FAILED: ', C, ' Actual: ', MyFloat(actual))
+                    # print('----------------')
+                    # print(A, op2str[operation], B)
+                    # # print(A.original, B.original)
+                    # print('FAILED: ', C, ' Actual: ', MyFloat(actual))
+                    pass
                 total += 1
             print(op2str[operation] + ':', str(100*passed/total) + '%')
 
 if __name__ == '__main__':
-    FloatTesting().RunTesting()
+    FloatTesting(typeToTest=np.float32).RunTesting()

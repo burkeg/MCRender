@@ -547,37 +547,33 @@ class MyFloat:
 
     @staticmethod
     def Normalize(exponent, significand, exponentBits, significandBits, roundingBits):
-        if significand == 0:
-            return 0, 0, roundingBits
-        if significand >= 1 << (significandBits + 1):
-            # Significand >= 2
-            # Rightshift significand and add to exponent until infinity
-            # or 1 <= significand < 2
-            while significand >= 1 << (significandBits + 1):
-                significand = roundingBits.RShift(significand, 1)
-                exponent += 1
-                # Check for infinity
-                if exponent >= (1 << exponentBits) - 1:
-                    break
-            else:
-                # Clear out the implicit leading 1 in the significand
-                significand &= (1 << significandBits) - 1
+        # Significand >= 2
+        # Rightshift significand and add to exponent until infinity
+        # or 1 <= significand < 2
+        while significand >= 1 << (significandBits + 1):
+            significand = roundingBits.RShift(significand, 1)
+            exponent += 1
+            # Check for infinity
+            if exponent >= (1 << exponentBits) - 1:
+                break
 
+        # 0 <= significand < 2
+        # Leftshift significand and subtract from exponent until subnormal
+        # or 1 <= significand < 2
+        while significand < 1 << significandBits:
+            # Check for subnormal
+            if exponent <= 0:
+                # all hope is lost, you're stuck as a subnormal
+                break
+            if exponent != 1:
+                # check if it's okay to LShift
+                significand = roundingBits.LShift(significand, 1)
+            exponent -= 1
         else:
-            # 0 <= significand < 2
-            # Leftshift significand and subtract from exponent until subnormal
-            # or 1 <= significand < 2
-            while significand < 1 << significandBits:
-                if exponent != 1:
-                    # check if it's okay to LShift
-                    significand = roundingBits.LShift(significand, 1)
-                exponent -= 1
-                # Check for subnormal
-                if exponent == 0:
-                    break
-            else:
-                # Clear out the implicit leading 1 in the significand
-                significand &= (1 << significandBits) - 1
+            # Clear out the implicit leading 1 in the significand
+            significand &= (1 << significandBits) - 1
+            # If a subnormal made it to this point, it deserves a promotion!
+            exponent = max(exponent, 1)
         if exponent < 0:
             roundingBits.Clear()
             return 0, 0, roundingBits

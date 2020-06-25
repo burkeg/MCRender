@@ -14,14 +14,14 @@ op2str = {
 randomizedCases = 10_000
 
 class FloatTesting:
-    def __init__(self, typeToTest=np.float16, manualCases=False, utahCases=False,
+    def __init__(self, typeToTest=np.float16, manualCases=True, utahCases=False,
                  randomCases=False, previouslyFailedRandomCases=False, specialCases=False,
                  specialAndRandomCases=True):
         self.cases = []
         self.typeToTest = typeToTest
         self.operators = [
-            operator.add,
-            operator.sub,
+            # operator.add,
+            # operator.sub,
             operator.mul,
             # operator.truediv
         ]
@@ -41,6 +41,8 @@ class FloatTesting:
 
     def buildManualCases(self):
         return [
+            [6e-08, 0.9995],
+            [0.9995, -1.0],
             [300, 700],
             [1.0, 1.0],
             [0.5874, -0.1327],
@@ -180,13 +182,13 @@ class FloatTesting:
                     # print('Matches: ', MyFloat(actual))
                     pass
                 else:
-                    # print('----------------')
-                    # print(A, op2str[operation], B)
-                    # # print(A.original, B.original)
-                    # print('FAILED: ', C, ' Actual: ', MyFloat(actual))
+                    print('----------------')
+                    print(A, op2str[operation], B)
+                    # print(A.original, B.original)
+                    print('FAILED: ', C, ' Actual: ', MyFloat(actual))
                     pass
                 total += 1
             print(op2str[operation] + ':', str(100*passed/total) + '%')
 
 if __name__ == '__main__':
-    FloatTesting(typeToTest=np.float32).RunTesting()
+    FloatTesting(typeToTest=np.float16).RunTesting()

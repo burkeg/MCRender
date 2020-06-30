@@ -65,6 +65,8 @@ class MyFloat:
         return MyFloat.Multiply(self, other)
     def __rmul__(self, other):
         return MyFloat.Multiply(self, other)
+    def __truediv__(self, other):
+        return MyFloat.Divide(self, other)
 
     # https://www.research.ibm.com/haifa/projects/verification/fpgen/papers/ieee-test-suite-v2.pdf
     # Binary floating-point types
@@ -445,6 +447,93 @@ class MyFloat:
         return c
 
     @staticmethod
+    def Divide(a, b, manual=True):
+        assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
+        if not manual:
+            return MyFloat(a.original * b.original)
+        pInf = (0, (1 << a.ExponentBits) - 1, 0)
+        nInf = (1, (1 << a.ExponentBits) - 1, 0)
+        NaN = (1, (1 << a.ExponentBits) - 1, 1 << (a.SignificandBits - 1))
+        pZero = (0, 0, 0)
+        nZero = (1, 0, 0)
+
+        c = MyFloat(valueFormat=a.format)
+        AS, AE, AT = [int(_, 2) for _ in [a.S, a.E, a.T]]
+        BS, BE, BT = [int(_, 2) for _ in [b.S, b.E, b.T]]
+        CS, CE, CT = [int(_, 2) for _ in [c.S, c.E, c.T]]
+
+        aInf = MyFloat._IsInfinite(AE, AT, a.ExponentBits)
+        bInf = MyFloat._IsInfinite(BE, BT, b.ExponentBits)
+        aNaN = MyFloat._IsNaN(AE, AT, a.ExponentBits)
+        bNaN = MyFloat._IsNaN(BE, BT, b.ExponentBits)
+        aZero = MyFloat._IsZero(AE, AT)
+        bZero = MyFloat._IsZero(BE, BT)
+
+        # Detect special cases
+        # NaN
+        if aNaN or bNaN:
+            CS, CE, CT = (AS, AE, AT) if aNaN else (BS, BE, BT)
+        # Zero
+        elif aZero or bZero:
+            # 0 / 0 = NaN
+            if aZero and bZero:
+                CS, CE, CT = NaN
+            # x / 0 = +-inf
+            elif bZero:
+                CS, CE, CT = pInf if MyFloat.MultSign(AS, BS) == 0 else nInf
+            # 0 / x = +-0
+            elif aZero:
+                CS, CE, CT = pZero if MyFloat.MultSign(AS, BS) == 0 else nZero
+        # Infinity
+        elif aInf or bInf:
+            # Can't divide infinity by infinity
+            if aInf and bInf:
+                CS, CE, CT = NaN
+            # Infinite / finite = infinite
+            elif aInf:
+                CS, CE, CT = pInf if MyFloat.MultSign(AS, BS) == 0 else nInf
+            # Infinite / finite = infinite
+            elif bInf:
+                CS, CE, CT = pZero if MyFloat.MultSign(AS, BS) == 0 else nZero
+            else:
+                raise Exception('Unexpected case')
+        else:
+            # Normal operation
+
+            # Add in implicit leading digit
+            leadingDigitA = 0 if AE == 0 else 1
+            leadingDigitB = 0 if BE == 0 else 1
+            AT |= leadingDigitA << a.SignificandBits
+            BT |= leadingDigitB << b.SignificandBits
+            CS = MyFloat.MultSign(AS, BS)
+
+            roundingBits = Rounding()
+            # Div
+            CE = max(AE, 1) - max(BE, 1) + c.ExponentBias
+            # At this point CE is the actual unbiased exponent
+            if CE <= 0:
+                CE -= 1
+            CT, roundingBits.lostBits = MyFloat.DivideToNPlaces(AT, BT, (1 << c.ExponentBits) + 2)
+            CT = roundingBits.LShift(CT, c.SignificandBits)
+
+            # Normalize
+            CE, CT, roundingBits = MyFloat.Normalize(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
+
+            CE, CT = MyFloat.Round(CE, CT, c.ExponentBits, c.SignificandBits, roundingBits)
+
+        c.S = format(CS, '01b')
+        c.E = format(CE, '0' + str(a.ExponentBits) + 'b')
+        c.T = format(CT, '0' + str(a.SignificandBits) + 'b')
+        # We probably messed up normalization if these assertions fail
+        assert len(c.S) == 1
+        assert len(c.E) == a.ExponentBits
+        assert len(c.T) == a.SignificandBits
+        c.Reinterpret()
+        if MyFloat.logFailures and MyFloat(a.original * b.original).original != c.original:
+            MyFloat.failureDict[(a.original, b.original)] = (MyFloat(a.original * b.original).original, c.original)
+        return c
+
+    @staticmethod
     def Add(a, b, manual=True):
         assert isinstance(a, MyFloat) and isinstance(b, MyFloat) and a.format == b.format
         if not manual:
@@ -720,6 +809,16 @@ class MyFloat:
             exponent += 1
             significand = 0
         return exponent, significand
+
+    @staticmethod
+    def DivideToNPlaces(N, D, nPlaces):
+        q = N // D
+        rem = N % D
+        decimals = []
+        while rem != 0 and len(decimals) < nPlaces:
+            rem = rem << 1 if rem < D else (rem - D) << 1
+            decimals.append(0 if rem < D else 1)
+        return N // D, ''.join([str(_) for _ in decimals])
 
 class Rounding:
     def __init__(self):

@@ -10,6 +10,7 @@ op2str = {
     operator.add: '+',
     operator.sub: '-',
     operator.mul: '*',
+    operator.truediv: '/',
 }
 randomizedCases = 10_000
 
@@ -23,7 +24,7 @@ class FloatTesting:
             operator.add,
             operator.sub,
             operator.mul,
-            # operator.truediv
+            operator.truediv
         ]
         if manualCases:
             self.cases.extend(self.buildManualCases())
@@ -41,6 +42,10 @@ class FloatTesting:
 
     def buildManualCases(self):
         return [
+            [6e-8, 2e-7],
+            [1, 1.5],
+            [1, 3],
+            [2, 4],
             [6.09e-05, 0.995],
             [1e-07, 0.995],
             [6e-08, 6.09e-05],

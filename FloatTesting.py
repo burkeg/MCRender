@@ -41,6 +41,7 @@ class FloatTesting:
 
     def buildManualCases(self):
         return [
+            [3.05e-5, 3.05e-5],
             [6e-08, 0.9995],
             [0.9995, -1.0],
             [300, 700],

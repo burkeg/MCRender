@@ -460,7 +460,7 @@ class MyFloat:
 
             # Scale right
             # when shifting into subnormals, the significand weighting is the same for exponent 0 and 1
-            shiftAmt = max(AE - max(BE, 1), 0)
+            shiftAmt = max(AE, 1) - max(BE, 1)
             roundingBits = Rounding()
             BT = roundingBits.RShift(BT, shiftAmt)
             BE -= shiftAmt
@@ -563,21 +563,28 @@ class MyFloat:
         while significand < 1 << significandBits:
             # Check for subnormal
             if exponent <= 0:
-                # all hope is lost, you're stuck as a subnormal
                 break
             if exponent != 1:
                 # check if it's okay to LShift
                 significand = roundingBits.LShift(significand, 1)
             exponent -= 1
-        else:
-            # Clear out the implicit leading 1 in the significand
-            significand &= (1 << significandBits) - 1
-            # If a subnormal made it to this point, it deserves a promotion!
-            exponent = max(exponent, 1)
+
+        if (significand >> significandBits) % 2 == 1:
+            if exponent > 0:
+                # Clear out the implicit leading 1 in the significand
+                significand &= (1 << significandBits) - 1
+            elif exponent == 0:
+                # Upgraded subnormal to normal
+                # Clear out the implicit leading 1 in the significand
+                significand &= (1 << significandBits) - 1
+                exponent = 1
         if exponent < 0:
-            roundingBits.Clear()
-            return 0, 0, roundingBits
-        elif exponent >= (1 << exponentBits) - 1:
+            # Subnormal stuck as subnormal
+            significand = roundingBits.RShift(significand, abs(exponent))
+            exponent = 0
+
+
+        if exponent >= (1 << exponentBits) - 1:
             roundingBits.Clear()
             return (1 << exponentBits) - 1, 0, roundingBits
         return exponent, significand, roundingBits

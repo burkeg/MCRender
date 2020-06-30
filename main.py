@@ -401,8 +401,8 @@ class Screen:
         self.height = height
         self.width = width
         self.camera = Camera()
-        # self.camera.ConfigureOrthographic(-1, 1, -1, 1, 1, 100)
-        self.camera.ConfigurePerspective(90, 1, 100)
+        self.camera.ConfigureOrthographic(-1, 1, -1, 1, 1, 100)
+        # self.camera.ConfigurePerspective(90, 1, 100)
         # self.camera.pos.x = 1
         self.camera.pos.x = 0
         self.xPosCalc = interp1d([-1, 1], [0, self.width - 1])

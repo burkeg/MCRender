@@ -11,34 +11,42 @@ op2str = {
     operator.sub: '-',
     operator.mul: '*',
     operator.truediv: '/',
+    operator.neg: '-unary',
+    np.sin: 'sin',
 }
 randomizedCases = 10_000
 
 class FloatTesting:
     def __init__(self, typeToTest=np.float16, manualCases=True, utahCases=False,
                  randomCases=False, previouslyFailedRandomCases=False, specialCases=False,
-                 specialAndRandomCases=True):
-        self.cases = []
+                 specialAndRandomCases1=True, specialAndRandomCases2=True):
+        self.cases1 = []
+        self.cases2 = []
         self.typeToTest = typeToTest
-        self.operators = [
+        self.operators2 = [
             operator.add,
             operator.sub,
             operator.mul,
             operator.truediv
         ]
+        self.operators1 = [
+            operator.neg,
+            # np.sin,
+        ]
         if manualCases:
-            self.cases.extend(self.buildManualCases())
+            self.cases2.extend(self.buildManualCases())
         if utahCases:
-            self.cases.extend(self.buildUtahCases())
+            self.cases2.extend(self.buildUtahCases())
         if randomCases:
-            self.cases.extend(self.buildRandomCases())
+            self.cases2.extend(self.buildRandomCases())
         if previouslyFailedRandomCases:
-            self.cases.extend(self.buildPreviouslyFailedRandomCases())
+            self.cases2.extend(self.buildPreviouslyFailedRandomCases())
         if specialCases:
-            self.cases.extend(self.buildSpecialCases())
-        if specialAndRandomCases:
-            self.cases.extend(self.buildSpecialAndRandomCases())
-            print(len(self.cases))
+            self.cases2.extend(self.buildSpecialCases())
+        if specialAndRandomCases1:
+            self.cases1.extend(self.buildSpecialAndRandomCases1())
+        if specialAndRandomCases2:
+            self.cases2.extend(self.buildSpecialAndRandomCases2())
 
     def buildManualCases(self):
         return [
@@ -136,7 +144,38 @@ class FloatTesting:
         specialValues = specialValues + [getNegative(x) for x in specialValues]
         return [[lhs.original, rhs.original] for lhs, rhs in itertools.combinations_with_replacement(specialValues, 2)]
 
-    def buildSpecialAndRandomCases(self):
+    def buildSpecialAndRandomCases1(self):
+        f = MyFloat(valueFormat=self.typeToTest)
+        def getNegative(toNegate):
+            assert isinstance(toNegate, MyFloat)
+            negated = MyFloat(toNegate.original)
+            negated.S = '1' if negated.S == '0' else '0'
+            negated.Reinterpret()
+            return negated
+
+        specialValues = [
+            f.Zero(),
+            f.MinSubNorm(),
+            f.NextMinSubNorm(),
+            f.MidSubNorm(),
+            f.PrevMaxSubNorm(),
+            f.MaxSubNorm(),
+            f.MinNorm(),
+            f.NextMinNorm(),
+            f.PrevOne(),
+            f.One(),
+            f.NextOne(),
+            f.MidNorm(),
+            f.PrevMaxNorm(),
+            f.MaxNorm(),
+            f.Infinity(),
+            f.DefaultNaN()
+        ]
+        specialValues += [MyFloat(self.RandFloat()) for _ in range(50)]
+        specialValues = specialValues + [getNegative(x) for x in specialValues]
+        return [x.original for x in specialValues]
+
+    def buildSpecialAndRandomCases2(self):
         f = MyFloat(valueFormat=self.typeToTest)
         def getNegative(toNegate):
             assert isinstance(toNegate, MyFloat)
@@ -174,12 +213,11 @@ class FloatTesting:
                 rand.getrandbits(np.dtype(self.typeToTest).itemsize * 8),
                 '01b'))
 
-
-    def RunTesting(self):
-        for operation in self.operators:
+    def Test2Op(self):
+        for operation in self.operators2:
             passed = 0
             total = 0
-            for a, b in self.cases:
+            for a, b in self.cases2:
                 A = MyFloat(a, self.typeToTest)
                 B = MyFloat(b, self.typeToTest)
                 C = operation(A, B)
@@ -199,6 +237,33 @@ class FloatTesting:
                     pass
                 total += 1
             print(op2str[operation] + ':', str(100*passed/total) + '%')
+
+    def Test1Op(self):
+        for operation in self.operators1:
+            passed = 0
+            total = 0
+            for a in self.cases1:
+                A = MyFloat(a, self.typeToTest)
+                C = operation(A)
+                mine = C.original
+                actual = operation(A.original)
+                if C.EqualsFloatBits(actual):
+                    passed += 1
+                    # print('----------------')
+                    # print(op2str[operation], A)
+                    # print('Matches: ', MyFloat(actual))
+                    pass
+                else:
+                    print('----------------')
+                    print(op2str[operation], A)
+                    print('FAILED: ', C, ' Actual: ', MyFloat(actual))
+                    pass
+                total += 1
+            print(op2str[operation] + ':', str(100*passed/total) + '%')
+
+    def RunTesting(self):
+        self.Test1Op()
+        self.Test2Op()
 
 if __name__ == '__main__':
     FloatTesting(typeToTest=np.float16).RunTesting()

@@ -20,6 +20,7 @@ class MyFloat:
     logFailures = True
     failureDict = dict()
     def __init__(self, value=None, valueFormat=None):
+        valueFormat = np.float16
         self.format = None
         self.original = 0.0
         if value is not None:
@@ -67,6 +68,10 @@ class MyFloat:
         return MyFloat.Multiply(self, other)
     def __truediv__(self, other):
         return MyFloat.Divide(self, other)
+    def __neg__(self):
+        return MyFloat.Negate(self)
+    def sin(self):
+        return MyFloat.Sine(self)
 
     # https://www.research.ibm.com/haifa/projects/verification/fpgen/papers/ieee-test-suite-v2.pdf
     # Binary floating-point types
@@ -630,6 +635,25 @@ class MyFloat:
         if MyFloat.logFailures and MyFloat(a.original + b.original).original != c.original:
             MyFloat.failureDict[(a.original, b.original)] = (MyFloat(a.original + b.original).original, c.original)
         return c
+
+    @staticmethod
+    def Sine(a, manual=True):
+        assert isinstance(a, MyFloat)
+        if not manual:
+            return MyFloat(np.sin(a.original))
+        raise Exception('Sine not implemented')
+
+    @staticmethod
+    def Negate(a, manual=True):
+        assert isinstance(a, MyFloat)
+        if not manual:
+            return MyFloat(-a.original)
+        if a.IsNaN():
+            return MyFloat(a.original)
+        retval = MyFloat(a.original)
+        retval.S = '0' if retval.S == '1' else '1'
+        retval.Reinterpret()
+        return retval
 
     @staticmethod
     def Sub(a, b, manual=True):

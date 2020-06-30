@@ -512,7 +512,7 @@ class MyFloat:
 
             # Scale right
             # when shifting into subnormals, the significand weighting is the same for exponent 0 and 1
-            shiftAmt = max(AE - max(BE, 1), 0)
+            shiftAmt = max(AE, 1) - max(BE, 1)
             roundingBits = Rounding()
             BT = roundingBits.RShift(BT, shiftAmt)
             BE -= shiftAmt

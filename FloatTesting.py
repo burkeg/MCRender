@@ -20,8 +20,8 @@ class FloatTesting:
         self.cases = []
         self.typeToTest = typeToTest
         self.operators = [
-            # operator.add,
-            # operator.sub,
+            operator.add,
+            operator.sub,
             operator.mul,
             # operator.truediv
         ]
@@ -41,6 +41,10 @@ class FloatTesting:
 
     def buildManualCases(self):
         return [
+            [6.09e-05, 0.995],
+            [1e-07, 0.995],
+            [6e-08, 6.09e-05],
+            [6.104e-05, 6.11e-05],
             [6e-08, 0.9995],
             [0.9995, -1.0],
             [300, 700],

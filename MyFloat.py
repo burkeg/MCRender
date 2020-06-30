@@ -69,148 +69,197 @@ class MyFloat:
     # https://www.research.ibm.com/haifa/projects/verification/fpgen/papers/ieee-test-suite-v2.pdf
     # Binary floating-point types
     # Zero
-    def Zero(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _Zero(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' * retVal.ExponentBits
         retVal.T = '0' * retVal.SignificandBits
         retVal.Reinterpret()
         return retVal
+    def Zero(self):
+        return MyFloat._Zero(self.format)
+
     # Smallest possible subnormal number
-    def MinSubNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _MinSubNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' * retVal.ExponentBits
         retVal.T = ('0' * (retVal.SignificandBits - 1)) + '1'
         retVal.Reinterpret()
         return retVal
+    def MinSubNorm(self):
+        return MyFloat._MinSubNorm(self.format)
 
     # Smallest number larger than the smallest possible subnormal number
-    def NextMinSubNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _NextMinSubNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' * retVal.ExponentBits
         retVal.T = ('0' * (retVal.SignificandBits - 2)) + '10'
         retVal.Reinterpret()
         return retVal
+    def NextMinSubNorm(self):
+        return MyFloat._NextMinSubNorm(self.format)
 
     # Middle subnormal number in total ordering of the subnormals
-    def MidSubNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
-        minSub = self.MinSubNorm()
-        maxSub = self.MaxSubNorm()
-        retVal.T = format((int(minSub.T, 2) + int(maxSub.T, 2)) // 2, '0' + str(self.SignificandBits) + 'b')
+    @staticmethod
+    def _MidSubNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
+        minSub = MyFloat._MinSubNorm(valueFormat)
+        maxSub = MyFloat._MaxSubNorm(valueFormat)
+        retVal.T = format((int(minSub.T, 2) + int(maxSub.T, 2)) // 2, '0' + str(retVal.SignificandBits) + 'b')
         retVal.Reinterpret()
         return retVal
+    def MidSubNorm(self):
+        return MyFloat._MidSubNorm(self.format)
 
     # Largest number smaller than the largest possible subnormal number
-    def PrevMaxSubNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _PrevMaxSubNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' * retVal.ExponentBits
         retVal.T = ('1' * (retVal.SignificandBits - 1)) + '0'
         retVal.Reinterpret()
         return retVal
+    def PrevMaxSubNorm(self):
+        return MyFloat._PrevMaxSubNorm(self.format)
 
     # Largest possible subnormal number
-    def MaxSubNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _MaxSubNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' * retVal.ExponentBits
         retVal.T = '1' * retVal.SignificandBits
         retVal.Reinterpret()
         return retVal
+    def MaxSubNorm(self):
+        return MyFloat._MaxSubNorm(self.format)
 
     # Smallest possible normal number
-    def MinNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _MinNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = ('0' * (retVal.ExponentBits - 1)) + '1'
         retVal.T = '0' * retVal.SignificandBits
         retVal.Reinterpret()
         return retVal
+    def MinNorm(self):
+        return MyFloat._MinNorm(self.format)
 
     # Smallest number larger than the smallest possible normal number
-    def NextMinNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _NextMinNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = ('0' * (retVal.ExponentBits - 1)) + '1'
         retVal.T = ('0' * (retVal.SignificandBits - 1)) + '1'
         retVal.Reinterpret()
         return retVal
+    def NextMinNorm(self):
+        return MyFloat._NextMinNorm(self.format)
 
     # Middle normal number in total ordering of the normals
-    def MidNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
-        minSub = self.MinNorm()
-        maxSub = self.MaxNorm()
-        retVal.E = format((int(minSub.E, 2) + int(maxSub.E, 2)) // 2, '0' + str(self.ExponentBits) + 'b')
-        retVal.T = format((int(minSub.T, 2) + int(maxSub.T, 2)) // 2, '0' + str(self.SignificandBits) + 'b')
+    @staticmethod
+    def _MidNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
+        minNorm = MyFloat._MinNorm(valueFormat)
+        maxNorm = MyFloat._MaxNorm(valueFormat)
+        retVal.E = format((int(minNorm.E, 2) + int(maxNorm.E, 2)) // 2, '0' + str(retVal.ExponentBits) + 'b')
+        retVal.T = format((int(minNorm.T, 2) + int(maxNorm.T, 2)) // 2, '0' + str(retVal.SignificandBits) + 'b')
         retVal.Reinterpret()
         return retVal
+    def MidNorm(self):
+        return MyFloat._MidNorm(self.format)
 
     # Largest number smaller than the largest possible normal number
-    def PrevMaxNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
-        retVal.S = '0'
-        retVal.E = ('1' * (retVal.ExponentBits - 1)) + '0'
-        retVal.T = '1' * retVal.SignificandBits
-        retVal.Reinterpret()
-        return retVal
-
-    # Largest possible normal number
-    def MaxNorm(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _PrevMaxNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = ('1' * (retVal.ExponentBits - 1)) + '0'
         retVal.T = ('1' * (retVal.SignificandBits - 1)) + '0'
         retVal.Reinterpret()
         return retVal
+    def PrevMaxNorm(self):
+        return MyFloat._PrevMaxNorm(self.format)
+
+    # Largest possible normal number
+    @staticmethod
+    def _MaxNorm(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
+        retVal.S = '0'
+        retVal.E = ('1' * (retVal.ExponentBits - 1)) + '0'
+        retVal.T = '1' * retVal.SignificandBits
+        retVal.Reinterpret()
+        return retVal
+    def MaxNorm(self):
+        return MyFloat._MaxNorm(self.format)
 
     # Positive infinity
-    def Infinity(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _Infinity(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '1' * retVal.ExponentBits
         retVal.T = '0' * retVal.SignificandBits
         retVal.Reinterpret()
         return retVal
+    def Infinity(self):
+        return MyFloat._Infinity(self.format)
 
     # Default NaN
-    def DefaultNaN(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _DefaultNaN(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '1' * retVal.ExponentBits
         retVal.T = '1' + ('0' * (retVal.SignificandBits - 1))
         retVal.Reinterpret()
         return retVal
+    def DefaultNaN(self):
+        return MyFloat._DefaultNaN(self.format)
 
     # Largest number smaller than one
-    def PrevOne(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _PrevOne(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' + ('1' * (retVal.ExponentBits - 2)) + '0'
         retVal.T = '1' * retVal.SignificandBits
         retVal.Reinterpret()
         return retVal
+    def PrevOne(self):
+        return MyFloat._PrevOne(self.format)
 
     # One
-    def One(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _One(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' + ('1' * (retVal.ExponentBits - 1))
         retVal.T = '0' * retVal.SignificandBits
         retVal.Reinterpret()
         return retVal
+    def One(self):
+        return MyFloat._One(self.format)
 
     # Smallest number larger than one
-    def NextOne(self):
-        retVal = MyFloat(valueFormat=self.format)
+    @staticmethod
+    def _NextOne(valueFormat):
+        retVal = MyFloat(valueFormat=valueFormat)
         retVal.S = '0'
         retVal.E = '0' + ('1' * (retVal.ExponentBits - 1))
         retVal.T = ('0' * (retVal.SignificandBits - 1)) + '1'
         retVal.Reinterpret()
         return retVal
+    def NextOne(self):
+        return MyFloat._NextOne(self.format)
 
     @staticmethod
     def SetFlag(flag):
@@ -372,6 +421,9 @@ class MyFloat:
             # Mult
             CS = MyFloat.MultSign(AS, BS)
             CE = max(AE, 1) + max(BE, 1) - c.ExponentBias
+            # At this point CE is the actual unbiased exponent
+            if CE <= 0:
+                CE -= 1
             CT = AT * BT
             CT = roundingBits.RShift(CT, c.SignificandBits)
 
@@ -551,11 +603,11 @@ class MyFloat:
         # Rightshift significand and add to exponent until infinity
         # or 1 <= significand < 2
         while significand >= 1 << (significandBits + 1):
-            significand = roundingBits.RShift(significand, 1)
-            exponent += 1
             # Check for infinity
             if exponent >= (1 << exponentBits) - 1:
                 break
+            significand = roundingBits.RShift(significand, 1)
+            exponent += 1
 
         # 0 <= significand < 2
         # Leftshift significand and subtract from exponent until subnormal
@@ -563,23 +615,29 @@ class MyFloat:
         while significand < 1 << significandBits:
             # Check for subnormal
             if exponent <= 0:
-                # all hope is lost, you're stuck as a subnormal
                 break
             if exponent != 1:
                 # check if it's okay to LShift
                 significand = roundingBits.LShift(significand, 1)
             exponent -= 1
-        else:
-            # Clear out the implicit leading 1 in the significand
-            significand &= (1 << significandBits) - 1
-            # If a subnormal made it to this point, it deserves a promotion!
-            exponent = max(exponent, 1)
+
+        # Very subnormal number...
         if exponent < 0:
+            significand = roundingBits.RShift(significand, abs(exponent))
+            exponent = 0
+
+        # Overflow
+        if exponent >= (1 << exponentBits) - 1:
+            exponent = (1 << exponentBits) - 1
+            significand = 0
             roundingBits.Clear()
-            return 0, 0, roundingBits
-        elif exponent >= (1 << exponentBits) - 1:
-            roundingBits.Clear()
-            return (1 << exponentBits) - 1, 0, roundingBits
+
+        # special case of subnormal upgrading to normal
+        if exponent == 0 and significand >= (1 << significandBits):
+            exponent = 1
+
+        # Clear out the implicit leading 1 in the significand
+        significand &= (1 << significandBits) - 1
         return exponent, significand, roundingBits
 
     @staticmethod

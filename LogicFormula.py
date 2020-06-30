@@ -282,6 +282,20 @@ class LogicFormula:
             GateCustom().PegSolitaireFlatNextState(inputs, Wire())
         return x + y, []
 
+    @staticmethod
+    def RippleCarryExample():
+        numBits = 10
+        a = [Wire() for _ in range(numBits)]
+        b = [Wire() for _ in range(numBits)]
+        s = [Wire() for _ in range(numBits)]
+        a[0].constant = False
+        a[1].constant = False
+        cin = Wire()
+        cin.constant = False
+        cout = Wire()
+        GateCustom().NBitRippleCarryAdder(a, b, cin, s, cout)
+        return a + b + [cin], s + [cout]
+
 class Gate:
     def __init__(self, gateType, inputs, outputs):
         self.gateType = gateType
@@ -321,6 +335,23 @@ class GateCustom(Gate):
 
         self.inputs= [A, B, Cin]
         self.outputs= [S, Cout]
+
+    def NBitRippleCarryAdder(self, A, B, Cin, S, Cout):
+        assert len(A) == len(B) == len(S)
+        numBits = len(A)
+        adders = [GateCustom() for _ in range(numBits)]
+        lastCin = Cin
+        nextCout = Wire()
+        for i, adder in enumerate(adders):
+            if i != len(adders) - 1:
+                adder.FullAdder(A[i], B[i], lastCin, S[i], nextCout)
+                lastCin = nextCout
+                nextCout = Wire()
+            else:
+                adder.FullAdder(A[i], B[i], lastCin, S[i], Cout)
+
+        self.inputs = [A, B, Cin]
+        self.outputs = [S, Cout]
 
     def ANDwide(self, inputs, output):
         if len(inputs) == 0:
@@ -744,6 +775,21 @@ def test():
     print(len(unique))
     test = 0
 
+def testRippleCarry():
+    theInputs, theOutputs = LogicFormula.RippleCarryExample()
+    formula = LogicFormula(theInputs, 1, overwriteLiterals=True)
+    formula.getTseytinCNF()
+    cnt = 0
+    unique = set()
+    # pp.pprint(formula.cnfForm.rawCNF())
+    for solution in pycosat.itersolve(formula.cnfForm.rawCNF()):
+        unique.add(tuple(solution[:15]))
+        # print(solution)
+        cnt += 1
+    pp.pprint(sorted(unique))
+    # print(len(unique))
+    test = 0
+
 def TseytinLIFE():
     prevTiles = [Wire() for _ in range(9)]
     # prevTiles[0].constant = False
@@ -776,5 +822,5 @@ def TseytinLIFE():
     print(SATUtils.nCr(8,2) + SATUtils.nCr(8,3))
 
 if __name__ == '__main__':
-    TseytinLIFE()
+    testRippleCarry()
 

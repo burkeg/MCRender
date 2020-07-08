@@ -23,6 +23,7 @@ class LogicFormula:
         self.assertedInputWires = self.inputs
         self.detectedInputWires = []
         self.constantWires = []
+        self.nameDict = None
         if overwriteLiterals:
             LogicFormula.assignVariables(inputs, startLiteral)
         self.usedLiterals = self.getAllUsedVariables(self.inputs)
@@ -50,18 +51,18 @@ class LogicFormula:
                     clauses.append([-wire.variable])
         return clauses
 
-    def getTseytinCNF(self):
-        self.cnfForm = CNF()
-        if len(self.inputs) == 0:
-            return
+    def getAllWires(self):
+        return list(filter(lambda x: isinstance(x, Wire), self.getAllComponents()))
+
+    def getAllGates(self):
+        return list(filter(lambda x: isinstance(x, Gate), self.getAllComponents()))
+
+    def getAllComponents(self):
         visited = []
         componentQueue = deque(self.assertedInputWires)
         # componentQueue = deque(self.inputs)
         visited.append(componentQueue[0])
         visitedGates = set()
-        if DEBUG:
-            print('Translating circuit graph into CNF using Tseytin Transform.')
-            t0 = time.time()
         while len(componentQueue) != 0:
             v = componentQueue.popleft()
             if isinstance(v,Wire):
@@ -89,10 +90,37 @@ class LogicFormula:
                         componentQueue.append(inputWire)
             else:
                 raise Exception("Logic structure should only contain Wires and Gates")
+        return visited
+
+    def getTseytinCNF(self):
+        self.cnfForm = CNF()
+        if len(self.inputs) == 0:
+            return
+        t0 = 0
+        if DEBUG:
+            print('Translating circuit graph into CNF using Tseytin Transform.')
+            t0 = time.time()
+
+        visited = self.getAllWires()
+
         if DEBUG:
             total = time.time() - t0
             print('Finished translating ' + str(len(visited)) + ' components. (' + str(total) + ' seconds)')
         self.cnfForm.mergeWithRaw(self.getConstantClauses(visited))
+
+    def genNameDict(self):
+        wires = self.getAllWires()
+        self.nameDict = {}
+        for wire in wires:
+            assert isinstance(wire, Wire)
+            if wire.variable != None and wire.name != None:
+                self.nameDict[wire.variable] = wire.name
+
+    def printNamedOnly(self, solution):
+        if self.nameDict == None:
+            self.genNameDict()
+        print(','.join([('-' if literal > 0 else '') + self.nameDict[abs(literal)] for literal in solution if abs(literal) in self.nameDict.keys()]))
+
 
     def getTseytinSingleGate(self, gate):
         if not issubclass(type(gate), Gate):
@@ -288,13 +316,23 @@ class LogicFormula:
         a = [Wire() for _ in range(numBits)]
         b = [Wire() for _ in range(numBits)]
         s = [Wire() for _ in range(numBits)]
-        a[0].constant = False
-        a[1].constant = False
+        for wire in a:
+            wire.constant = False
+        for wire in b:
+            wire.constant = False
         cin = Wire()
         cin.constant = False
         cout = Wire()
         GateCustom().NBitRippleCarryAdder(a, b, cin, s, cout)
         return a + b + [cin], s + [cout]
+
+    @staticmethod
+    def Figure34Example():
+        a = [Wire() for _ in range(2)]
+        b = [Wire() for _ in range(3)]
+        z = [Wire() for _ in range(5)]
+        GateCustom().Figure34(a, b, z)
+        return a + b, z
 
 class Gate:
     def __init__(self, gateType, inputs, outputs):
@@ -307,6 +345,61 @@ class Gate:
 class GateCustom(Gate):
     def __init__(self):
         super().__init__(LogicStructure.CUSTOM, [], [])
+
+    def Figure34(self, x, y, z):
+        assert len(x) == 2
+        assert len(y) == 3
+        assert len(z) == 5
+        w = {}
+        for i, wire in enumerate(x):
+            assert isinstance(wire, Wire)
+            name = 'x' + str(i + 1)
+            w[name] = wire
+            wire.name = name
+        for i, wire in enumerate(y):
+            assert isinstance(wire, Wire)
+            name = 'y' + str(i + 1)
+            w[name] = wire
+            wire.name = name
+        for i, wire in enumerate(z):
+            assert isinstance(wire, Wire)
+            name = 'z' + str(i + 1)
+            w[name] = wire
+            wire.name = name
+
+        Gate2(LogicStructure.AND, w['x1'], w['y1'], w['z1'])
+        b1 = Gate2(LogicStructure.AND, w['x2'], w['y1'])
+        a2 = Gate2(LogicStructure.AND, w['x1'], w['y2'])
+        b2 = Gate2(LogicStructure.AND, w['x2'], w['y2'])
+        a3 = Gate2(LogicStructure.AND, w['x1'], w['y3'])
+        b3 = Gate2(LogicStructure.AND, w['x2'], w['y3'])
+
+        Gate2(LogicStructure.XOR, b1.output, a2.output, w['z2'])
+        c1 = Gate2(LogicStructure.AND, b1.output, a2.output)
+        s = Gate2(LogicStructure.XOR, b2.output, a3.output)
+        p = Gate2(LogicStructure.AND, b2.output, a3.output)
+
+        Gate2(LogicStructure.XOR, c1.output, s.output, w['z3'])
+        q = Gate2(LogicStructure.AND, c1.output, s.output)
+
+        c2 = Gate2(LogicStructure.OR, q.output, p.output)
+
+        Gate2(LogicStructure.XOR, c2.output, b3.output, w['z4'])
+        Gate2(LogicStructure.AND, c2.output, b3.output, w['z5'])
+
+        b1.output.name = 'b1'
+        a2.output.name = 'a2'
+        b2.output.name = 'b2'
+        a3.output.name = 'a3'
+        b3.output.name = 'b3'
+        c1.output.name = 'c1'
+        s.output.name = 's'
+        p.output.name = 'p'
+        q.output.name = 'q'
+        c2.output.name = 'c2'
+
+        self.inputs = x + y
+        self.outputs = z
 
     def HalfAdder(self, A, B, S, Cout):
         # A = Wire()
@@ -790,6 +883,22 @@ def testRippleCarry():
     # print(len(unique))
     test = 0
 
+def testFigure34():
+    theInputs, theOutputs = LogicFormula.Figure34Example()
+    formula = LogicFormula(theInputs, 1, overwriteLiterals=True)
+    formula.getTseytinCNF()
+    cnt = 0
+    unique = set()
+    # pp.pprint(formula.cnfForm.rawCNF())
+    for solution in pycosat.itersolve(formula.cnfForm.rawCNF()):
+        unique.add(tuple(solution))
+        # print(solution)
+        cnt += 1
+    for sol in sorted(unique):
+        formula.printNamedOnly(sol)
+    # print(len(unique))
+    test = 0
+
 def TseytinLIFE():
     prevTiles = [Wire() for _ in range(9)]
     # prevTiles[0].constant = False
@@ -822,5 +931,5 @@ def TseytinLIFE():
     print(SATUtils.nCr(8,2) + SATUtils.nCr(8,3))
 
 if __name__ == '__main__':
-    testRippleCarry()
+    testFigure34()
 

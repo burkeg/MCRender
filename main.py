@@ -463,4 +463,4 @@ def TestShape(shape, degPerTurn=30, scale=None, rotate=None, translate=None):
 
 
 if __name__ == '__main__':
-    TestShape(Shape.Teapot(), scale=[0.3, 0.3, 0.3], rotate=[-90, 0, 0])
+    TestShape(Shape.Teapot(), scale=[0.3, 0.3, 0.3], rotate=[-90, 0, 0], translate=[1, 0, 0])
